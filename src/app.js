@@ -59,24 +59,24 @@ export function createApp() {
   });
   app.get('/tiktok/callback', async (req, res) => {
     if (!req.query.state || req.query.state !== getSetting('tt_state')) return res.status(400).send('Estado inválido');
-    try { await tt.exchangeCode(String(req.query.code || '')); res.redirect('/admin?ok=TikTok+conectado'); }
-    catch (e) { logEvent('tiktok', 'error', e.message); res.redirect(`/admin?ok=${encodeURIComponent(`Error TikTok: ${e.message}`)}`); }
+    try { await tt.exchangeCode(String(req.query.code || '')); res.redirect('/admin?tab=conexiones&ok=TikTok+conectado'); }
+    catch (e) { logEvent('tiktok', 'error', e.message); res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Error TikTok: ${e.message}`)}`); }
   });
 
   // ---------- YouTube ----------
   app.get('/youtube/callback', async (req, res) => {
     if (!req.query.state || req.query.state !== getSetting('yt_state')) return res.status(400).send('Estado inválido');
-    try { await yt.exchangeCode(String(req.query.code || '')); res.redirect('/admin?ok=YouTube+conectado'); }
-    catch (e) { logEvent('youtube', 'error', e.message); res.redirect(`/admin?ok=${encodeURIComponent(`Error YouTube: ${e.message}`)}`); }
+    try { await yt.exchangeCode(String(req.query.code || '')); res.redirect('/admin?tab=conexiones&ok=YouTube+conectado'); }
+    catch (e) { logEvent('youtube', 'error', e.message); res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Error YouTube: ${e.message}`)}`); }
   });
 
   // ---------- Panel ----------
   const admin = express.Router();
   admin.use(basicAuth);
-  admin.get('/', (req, res) => res.send(renderAdmin({ flash: req.query.ok ? String(req.query.ok) : '' })));
+  admin.get('/', (req, res) => res.send(renderAdmin({ flash: req.query.ok ? String(req.query.ok) : '', tab: String(req.query.tab || 'reglas') })));
   admin.post('/rules', async (req, res) => {
     const b = { ...req.body };
-    if (!['instagram', 'tiktok', 'youtube'].includes(b.platform) || !String(b.keywords || '').trim()) return res.redirect('/admin?ok=Datos+inv%C3%A1lidos');
+    if (!['instagram', 'tiktok', 'youtube'].includes(b.platform) || !String(b.keywords || '').trim()) return res.redirect('/admin?tab=reglas&ok=Datos+inv%C3%A1lidos');
     try {
       if (b.platform === 'instagram' && b.media_id) b.media_id = await ig.resolveMediaId(b.media_id);
       if (b.platform === 'youtube' && b.media_id) {
@@ -84,10 +84,10 @@ export function createApp() {
         if (m) b.media_id = m[1];
       }
     } catch (e) {
-      return res.redirect(`/admin?ok=${encodeURIComponent(`No se guardó: ${e.message}`)}`);
+      return res.redirect(`/admin?tab=reglas&ok=${encodeURIComponent(`No se guardó: ${e.message}`)}`);
     }
     saveRule({ ...b, active: b.active === 'on' });
-    res.redirect('/admin?ok=Regla+guardada');
+    res.redirect('/admin?tab=reglas&ok=Regla+guardada');
   });
   admin.post('/credentials', (req, res) => {
     let n = 0;
@@ -96,31 +96,31 @@ export function createApp() {
       if (v) { setSetting(key, v); n++; } // vacío = no cambiar
     }
     applyPanelCredentials(getSetting);
-    res.redirect(`/admin?ok=${encodeURIComponent(`${n} credencial(es) guardada(s)`)}`);
+    res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`${n} credencial(es) guardada(s)`)}`);
   });
-  admin.post('/rules/:id/delete', (req, res) => { deleteRule(Number(req.params.id)); res.redirect('/admin?ok=Regla+eliminada'); });
+  admin.post('/rules/:id/delete', (req, res) => { deleteRule(Number(req.params.id)); res.redirect('/admin?tab=reglas&ok=Regla+eliminada'); });
   admin.post('/instagram/token', async (req, res) => {
     const t = String(req.body.token || '').trim();
-    if (!t) return res.redirect('/admin');
+    if (!t) return res.redirect('/admin?tab=conexiones');
     setSetting('ig_access_token', t);
     setSetting('ig_token_refreshed_at', String(Date.now()));
-    try { const me = await ig.loadAccount(); res.redirect(`/admin?ok=${encodeURIComponent(`Instagram conectado: @${me.username}`)}`); }
-    catch (e) { res.redirect(`/admin?ok=${encodeURIComponent(`Token inválido: ${e.message}`)}`); }
+    try { const me = await ig.loadAccount(); res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Instagram conectado: @${me.username}`)}`); }
+    catch (e) { res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Token inválido: ${e.message}`)}`); }
   });
   admin.post('/instagram/subscribe', async (_req, res) => {
-    try { if (!getSetting('ig_user_id')) await ig.loadAccount(); await ig.subscribeWebhooks(); res.redirect('/admin?ok=Webhooks+de+Instagram+activados'); }
-    catch (e) { res.redirect(`/admin?ok=${encodeURIComponent(`Error: ${e.message}`)}`); }
+    try { if (!getSetting('ig_user_id')) await ig.loadAccount(); await ig.subscribeWebhooks(); res.redirect('/admin?tab=conexiones&ok=Webhooks+de+Instagram+activados'); }
+    catch (e) { res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Error: ${e.message}`)}`); }
   });
   admin.get('/tiktok/connect', (_req, res) => {
-    if (!config.tiktok.appId) return res.redirect('/admin?ok=Falta+TIKTOK_APP_ID');
+    if (!config.tiktok.appId) return res.redirect('/admin?tab=conexiones&ok=Falta+TIKTOK_APP_ID');
     res.redirect(tt.authorizeUrl(newState('tt_state')));
   });
   admin.post('/tiktok/webhook', async (_req, res) => {
-    try { await tt.registerWebhook(); res.redirect('/admin?ok=Webhook+de+TikTok+registrado'); }
-    catch (e) { res.redirect(`/admin?ok=${encodeURIComponent(`Error: ${e.message}`)}`); }
+    try { await tt.registerWebhook(); res.redirect('/admin?tab=conexiones&ok=Webhook+de+TikTok+registrado'); }
+    catch (e) { res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Error: ${e.message}`)}`); }
   });
   admin.get('/youtube/connect', (_req, res) => {
-    if (!config.youtube.clientId) return res.redirect('/admin?ok=Falta+YT_CLIENT_ID');
+    if (!config.youtube.clientId) return res.redirect('/admin?tab=conexiones&ok=Falta+YT_CLIENT_ID');
     res.redirect(yt.authorizeUrl(newState('yt_state')));
   });
   app.use('/admin', admin);

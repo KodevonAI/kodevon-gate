@@ -76,31 +76,64 @@ function setupSection() {
   </table></details></section>`;
 }
 
-export function renderAdmin({ flash = '' } = {}) {
+function connectBlock(p) {
+  if (p === 'instagram') {
+    return `<form method="post" action="/admin/instagram/token" class="inline">
+        <input name="token" placeholder="Pega aquí el token del usuario del sistema (EAA...) o de Instagram (IG...)" autocomplete="off">
+        <button>Guardar token</button></form>
+      <form method="post" action="/admin/instagram/subscribe" class="inline"><button class="sec">Activar webhooks de la cuenta</button></form>`;
+  }
+  if (p === 'tiktok') {
+    return `<div class="inline"><a class="btn" href="/admin/tiktok/connect">Conectar cuenta de TikTok</a>
+      <form method="post" action="/admin/tiktok/webhook"><button class="sec">Registrar webhook en TikTok</button></form></div>
+      <p class="muted">Verificación de seguidor: <b>${config.tiktok.followCheck === 'apify' && config.tiktok.apifyToken ? 'Apify (lista pública)' : 'desactivada'}</b></p>`;
+  }
+  return `<a class="btn" href="/admin/youtube/connect">Conectar canal de YouTube</a>
+    <p class="muted">Revisa comentarios cada ${config.youtube.pollSeconds}s</p>`;
+}
+
+function mediaLabel(p, id) {
+  if (!id) return '<span class="muted">Todas las publicaciones</span>';
+  if (p === 'youtube') return `<a href="https://youtu.be/${esc(id)}" target="_blank">Video ${esc(id)}</a>`;
+  return `<span>Post ${esc(id)}</span>`;
+}
+
+function ruleCard(p, r) {
+  const kws = r.keywords.split(',').map((k) => k.trim()).filter(Boolean).map((k) => `<span class="chip">${esc(k)}</span>`).join(' ');
+  return `<div class="card">
+    <div class="card-head">
+      <div><b>${esc(r.name || `Regla #${r.id}`)}</b> <span class="badge ${r.active ? 'on' : 'off'}">${r.active ? 'Activa' : 'Pausada'}</span>
+        <div class="meta">${kws} · ${mediaLabel(p, r.media_id)}</div></div>
+    </div>
+    <details><summary>Editar</summary>${ruleForm(p, r)}</details>
+  </div>`;
+}
+
+const TABS = [['reglas', 'Reglas'], ['conexiones', 'Conexiones'], ['actividad', 'Actividad']];
+
+export function renderAdmin({ flash = '', tab = 'reglas' } = {}) {
+  if (!TABS.some(([k]) => k === tab)) tab = 'reglas';
   const st = status();
-  const events = getDb().prepare('SELECT * FROM events ORDER BY id DESC LIMIT 60').all();
-  const sections = ['instagram', 'tiktok', 'youtube'].map((p) => {
-    const rules = listRules(p);
-    let connect = '';
-    if (p === 'instagram') {
-      connect = `<form method="post" action="/admin/instagram/token" class="inline">
-          <input name="token" placeholder="Pega aquí el token del usuario del sistema (EAA...) o de Instagram (IG...)" autocomplete="off">
-          <button>Guardar token</button></form>
-        <form method="post" action="/admin/instagram/subscribe" class="inline"><button>Activar webhooks de la cuenta</button></form>
-        <p class="muted">Webhook para Meta: <code>${esc(config.baseUrl)}/webhooks/instagram</code></p>`;
-    } else if (p === 'tiktok') {
-      connect = `<a class="btn" href="/admin/tiktok/connect">Conectar cuenta de TikTok</a>
-        <form method="post" action="/admin/tiktok/webhook" class="inline"><button>Registrar webhook en TikTok</button></form>
-        <p class="muted">Redirect URI: <code>${esc(config.baseUrl)}/tiktok/callback</code> · Verificación de seguidor: <b>${config.tiktok.followCheck === 'apify' && config.tiktok.apifyToken ? 'Apify (lista pública)' : 'desactivada'}</b></p>`;
-    } else {
-      connect = `<a class="btn" href="/admin/youtube/connect">Conectar canal de YouTube</a>
-        <p class="muted">Redirect URI: <code>${esc(config.baseUrl)}/youtube/callback</code> · Revisa comentarios cada ${config.youtube.pollSeconds}s</p>`;
-    }
-    return `<section><h2>${PLATFORM_LABEL[p]} <span class="pill">${esc(st[p])}</span></h2>
-      <p class="muted">${HELP[p]}</p>${connect}
-      ${rules.map((r) => ruleForm(p, r)).join('')}
-      <details><summary>+ Nueva regla de ${PLATFORM_LABEL[p]}</summary>${ruleForm(p)}</details></section>`;
-  }).join('');
+  let body = '';
+
+  if (tab === 'reglas') {
+    body = ['instagram', 'tiktok', 'youtube'].map((p) => {
+      const rules = listRules(p);
+      return `<section><h2>${PLATFORM_LABEL[p]} <span class="pill">${esc(st[p])}</span></h2>
+        <p class="muted">${HELP[p]}</p>
+        <h3>Reglas creadas (${rules.length})</h3>
+        ${rules.length ? rules.map((r) => ruleCard(p, r)).join('') : '<p class="muted">Todavía no hay reglas.</p>'}
+        <div class="new"><details${rules.length ? '' : ' open'}><summary>＋ Crear nueva regla de ${PLATFORM_LABEL[p]}</summary>${ruleForm(p)}</details></div>
+      </section>`;
+    }).join('');
+  } else if (tab === 'conexiones') {
+    body = setupSection() + ['instagram', 'tiktok', 'youtube'].map((p) => `<section><h2>${PLATFORM_LABEL[p]} <span class="pill">${esc(st[p])}</span></h2>${connectBlock(p)}</section>`).join('');
+  } else {
+    const events = getDb().prepare('SELECT * FROM events ORDER BY id DESC LIMIT 200').all();
+    body = `<section><h2>Actividad reciente</h2><table>${events.map((e) => `<tr><td class="muted">${esc(e.created_at)}</td><td>${esc(e.platform)}</td><td class="${esc(e.level)}">${esc(e.message)}</td></tr>`).join('') || '<tr><td class="muted">Sin actividad todavía</td></tr>'}</table></section>`;
+  }
+
+  const nav = TABS.map(([k, l]) => `<a href="/admin?tab=${k}" class="${k === tab ? 'act' : ''}">${l}</a>`).join('');
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Kodevon Gate</title>
@@ -108,23 +141,28 @@ export function renderAdmin({ flash = '' } = {}) {
 :root{--o:#FF5F1F;--bg:#1A1A1A;--card:#242424;--t:#F5F5F7;--g:#8C8C8C}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:15px/1.5 Inter,system-ui,sans-serif}
 main{max-width:1000px;margin:auto;padding:24px}h1{font-family:Outfit,Inter,sans-serif;margin:0 0 4px}h1 b{color:var(--o)}
-section{background:var(--card);border-radius:10px;padding:20px;margin:20px 0}h2{margin:0 0 6px;font-size:20px}
+nav{display:flex;gap:4px;border-bottom:1px solid #333;margin:16px 0 0}nav a{color:var(--g);text-decoration:none;padding:10px 16px;font-weight:600;border-bottom:2px solid transparent}
+nav a.act{color:var(--t);border-color:var(--o)}
+section{background:var(--card);border-radius:10px;padding:20px;margin:20px 0}h2{margin:0 0 6px;font-size:20px}h3{font-size:14px;color:var(--g);margin:18px 0 8px;text-transform:uppercase;letter-spacing:.04em}
 .pill{font-size:12px;background:#333;border-radius:20px;padding:3px 10px;margin-left:8px;vertical-align:middle;color:var(--g)}
-.muted{color:var(--g);font-size:13px}code{background:#111;padding:2px 6px;border-radius:4px;color:var(--t)}
+.muted{color:var(--g);font-size:13px}code{background:#111;padding:2px 6px;border-radius:4px;color:var(--t)}a{color:var(--o)}
+.card{background:#1d1d1d;border:1px solid #333;border-radius:8px;padding:12px 14px;margin:8px 0}.card-head{display:flex;justify-content:space-between;align-items:center}
+.meta{font-size:13px;color:var(--g);margin-top:4px}.chip{background:#333;border-radius:4px;padding:1px 8px;color:var(--t);font-size:12px}
+.badge{font-size:11px;border-radius:20px;padding:2px 8px;margin-left:6px}.badge.on{background:#21402a;color:#9be59b}.badge.off{background:#402121;color:#ff8a80}
+.new{margin-top:16px;border-top:1px dashed #444;padding-top:4px}
 label{display:block;margin:8px 0;font-weight:600;font-size:13px}label small{display:block;font-weight:400;color:var(--g)}
 input,textarea{width:100%;background:#111;color:var(--t);border:1px solid #3a3a3a;border-radius:6px;padding:8px;font:inherit;margin-top:4px}
-.row{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:12px}.rule{border-top:1px solid #333;padding-top:12px;margin-top:12px}
+.row{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:12px}.rule{padding-top:8px}
 button,.btn{background:var(--o);color:#fff;border:0;border-radius:6px;padding:8px 14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;font-size:14px}
-.danger{background:#5a2a2a}.actions{display:flex;gap:12px;align-items:center}.check{display:flex;gap:6px;align-items:center;margin:0}.check input{width:auto;margin:0}
-.inline{display:flex;gap:8px;margin:8px 0}.inline input{margin:0}.flash{background:#2d3a22;padding:10px 14px;border-radius:6px}
-summary{cursor:pointer;color:var(--o);margin-top:12px;font-weight:600}table{width:100%;font-size:12px;border-collapse:collapse}td{padding:4px;border-bottom:1px solid #333;vertical-align:top}
+.sec{background:#3a3a3a}.danger{background:#5a2a2a}.actions{display:flex;gap:12px;align-items:center}.check{display:flex;gap:6px;align-items:center;margin:0}.check input{width:auto;margin:0}
+.inline{display:flex;gap:8px;margin:8px 0;align-items:center}.inline input{margin:0}.flash{background:#2d3a22;padding:10px 14px;border-radius:6px;margin-top:16px}
+summary{cursor:pointer;color:var(--o);margin-top:8px;font-weight:600}table{width:100%;font-size:12px;border-collapse:collapse}td{padding:4px;border-bottom:1px solid #333;vertical-align:top}
 .okc{color:#9be59b;font-weight:400}.no{color:#ff8a80;font-weight:400}.cp{cursor:pointer}.cp.copied{outline:1px solid var(--o)}
 .error{color:#ff8a80}.warn{color:#ffd180}@media(max-width:700px){.row{grid-template-columns:1fr}}
 </style></head><body><main>
-<h1><b>Kodevon</b> Gate</h1><p class="muted">Palabras clave → verificación de seguidor → contenido. Variables disponibles en los textos: <code>{username}</code></p>
+<h1><b>Kodevon</b> Gate</h1><p class="muted">Palabras clave → verificación de seguidor → contenido. Variable disponible en los textos: <code>{username}</code></p>
+<nav>${nav}</nav>
 ${flash ? `<p class="flash">${esc(flash)}</p>` : ''}
-${setupSection()}
-${sections}
-<section><h2>Actividad reciente</h2><table>${events.map((e) => `<tr><td class="muted">${esc(e.created_at)}</td><td>${esc(e.platform)}</td><td class="${esc(e.level)}">${esc(e.message)}</td></tr>`).join('') || '<tr><td class="muted">Sin actividad todavía</td></tr>'}</table></section>
+${body}
 </main></body></html>`;
 }
