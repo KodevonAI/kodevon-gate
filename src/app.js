@@ -74,9 +74,18 @@ export function createApp() {
   const admin = express.Router();
   admin.use(basicAuth);
   admin.get('/', (req, res) => res.send(renderAdmin({ flash: req.query.ok ? String(req.query.ok) : '' })));
-  admin.post('/rules', (req, res) => {
-    const b = req.body;
+  admin.post('/rules', async (req, res) => {
+    const b = { ...req.body };
     if (!['instagram', 'tiktok', 'youtube'].includes(b.platform) || !String(b.keywords || '').trim()) return res.redirect('/admin?ok=Datos+inv%C3%A1lidos');
+    try {
+      if (b.platform === 'instagram' && b.media_id) b.media_id = await ig.resolveMediaId(b.media_id);
+      if (b.platform === 'youtube' && b.media_id) {
+        const m = String(b.media_id).match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
+        if (m) b.media_id = m[1];
+      }
+    } catch (e) {
+      return res.redirect(`/admin?ok=${encodeURIComponent(`No se guardó: ${e.message}`)}`);
+    }
     saveRule({ ...b, active: b.active === 'on' });
     res.redirect('/admin?ok=Regla+guardada');
   });

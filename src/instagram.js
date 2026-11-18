@@ -101,6 +101,25 @@ async function sendWithButton(recipient, text, ruleId) {
   }
 }
 
+/**
+ * Convierte un link o shortcode de Instagram (instagram.com/p/XXXX o /reel/XXXX) en el ID numérico
+ * del post, buscando en las publicaciones de la cuenta. Si ya es numérico lo devuelve igual.
+ */
+export async function resolveMediaId(input) {
+  const v = String(input || '').trim();
+  if (!v || /^\d+$/.test(v)) return v;
+  const m = v.match(/instagram\.com\/(?:[\w.]+\/)?(?:p|reel|reels|tv)\/([\w-]+)/i);
+  const shortcode = m ? m[1] : v.replace(/\/$/, '');
+  let url = `${api()}/${myId()}/media?fields=id,shortcode,permalink&limit=100&access_token=${encodeURIComponent(callToken())}`;
+  for (let page = 0; url && page < 10; page++) {
+    const r = await request(url);
+    const hit = (r.data || []).find((it) => it.shortcode === shortcode || String(it.permalink || '').includes(`/${shortcode}`));
+    if (hit) return hit.id;
+    url = r.paging?.next;
+  }
+  throw new Error(`No encontré el post ${shortcode} en la cuenta @${getSetting('ig_username')}`);
+}
+
 export async function isFollower(igsid) {
   const r = await request(`${api()}/${igsid}?fields=username,is_user_follow_business&access_token=${encodeURIComponent(callToken())}`);
   return { follows: r.is_user_follow_business === true, username: r.username || '' };

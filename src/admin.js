@@ -29,7 +29,7 @@ function ruleForm(platform, r = {}) {
     <div class="row">
       <label>Nombre<input name="name" value="${esc(r.name)}" placeholder="Ej: Guía de automatización"></label>
       <label>Palabras clave<small>Separadas por coma. No importan mayúsculas ni tildes.</small><input name="keywords" required value="${esc(r.keywords)}" placeholder="GUIA, CALCULO"></label>
-      <label>ID del ${isYt ? 'video' : 'post'} (opcional)<small>Vacío = aplica a todos</small><input name="media_id" value="${esc(r.media_id)}"></label>
+      <label>Link o ID del ${isYt ? 'video' : 'post'} (opcional)<small>Pega el link del ${isYt ? 'video' : 'post/reel'}. Vacío = aplica a todos</small><input name="media_id" value="${esc(r.media_id)}"></label>
     </div>
     ${platform !== 'tiktok' ? field('public_reply', 'Respuesta pública al comentario', isYt ? 'Incluye aquí el link al contenido.' : 'Ej: ¡Listo {username}! Te escribí por DM 📩') : ''}
     ${!isYt ? field('ask_follow_msg', 'DM: pedir que te siga', platform === 'tiktok' ? 'Pide que te siga y responda LISTO.' : 'Se envía con el botón "Ya te sigo".', 3) : ''}

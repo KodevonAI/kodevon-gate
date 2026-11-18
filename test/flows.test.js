@@ -179,3 +179,12 @@ test('render conserva saltos de línea y limpia {username} vacío', async () => 
   assert.equal(render('¡Hola {username}!\n\n1️⃣ Paso', { username: '' }), '¡Hola!\n\n1️⃣ Paso');
   assert.equal(render('¡Listo {username}! Ok', { username: 'ana' }), '¡Listo ana! Ok');
 });
+
+test('IG: resuelve link de reel a ID numérico', async () => {
+  setSetting('ig_access_token', 'EAAx'); setSetting('ig_page_token', 'P'); setSetting('ig_user_id', '777');
+  mockFetch((url) => (url.includes('/777/media') ? { data: [{ id: '111', shortcode: 'AAA' }, { id: '222', shortcode: 'Df5BvgckR9p' }] } : {}));
+  assert.equal(await ig.resolveMediaId('https://www.instagram.com/p/Df5BvgckR9p/'), '222');
+  assert.equal(await ig.resolveMediaId('https://www.instagram.com/kodevon.ai/reel/Df5BvgckR9p/?igsh=x'), '222');
+  assert.equal(await ig.resolveMediaId('123'), '123');
+  await assert.rejects(ig.resolveMediaId('ZZZ'));
+});
