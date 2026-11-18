@@ -10,9 +10,17 @@ import { matchRule, render } from './engine.js';
 const P = 'instagram';
 const PAYLOAD_PREFIX = 'FOLLOW_CHECK:';
 
-const api = () => `https://graph.instagram.com/${config.instagram.graphVersion}`;
 export const token = () => getSetting('ig_access_token') || config.instagram.accessToken;
+/**
+ * Dos modos según el token:
+ *  - Facebook Login / usuario del sistema (empieza por "EAA"): graph.facebook.com + token de la página.
+ *  - Instagram Login (empieza por "IG"): graph.instagram.com + token de Instagram.
+ */
+export const isFbMode = () => /^EAA/.test(token());
+const api = () => `https://graph.${isFbMode() ? 'facebook' : 'instagram'}.com/${config.instagram.graphVersion}`;
+const callToken = () => (isFbMode() ? getSetting('ig_page_token') || token() : token());
 const myId = () => getSetting('ig_user_id');
+const senderId = () => (isFbMode() ? getSetting('ig_page_id') : myId());
 
 export function verifySignature(rawBody, header) {
   if (!config.instagram.appSecret) return false;
@@ -25,6 +33,18 @@ export function verifySignature(rawBody, header) {
 /** Lee el perfil de la cuenta conectada y guarda su ID. */
 export async function loadAccount() {
   if (!token()) return null;
+  if (isFbMode()) {
+    const r = await request(`${api()}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100&access_token=${encodeURIComponent(token())}`);
+    const pages = (r.data || []).filter((p) => p.instagram_business_account);
+    if (!pages.length) throw new Error('El token no tiene ninguna página con cuenta de Instagram asignada');
+    const want = (getSetting('ig_username_hint') || '').toLowerCase();
+    const page = pages.find((p) => p.instagram_business_account.username?.toLowerCase() === want) || pages[0];
+    setSetting('ig_page_id', page.id);
+    setSetting('ig_page_token', page.access_token || '');
+    setSetting('ig_user_id', page.instagram_business_account.id);
+    setSetting('ig_username', page.instagram_business_account.username || '');
+    return { id: page.instagram_business_account.id, username: page.instagram_business_account.username, page: page.name };
+  }
   const me = await request(`${api()}/me?fields=user_id,username&access_token=${encodeURIComponent(token())}`);
   setSetting('ig_user_id', me.user_id || me.id);
   setSetting('ig_username', me.username || '');
@@ -33,13 +53,17 @@ export async function loadAccount() {
 
 /** Suscribe la cuenta a los webhooks de comentarios y mensajes. */
 export async function subscribeWebhooks() {
+  if (isFbMode()) {
+    const fields = 'messages,messaging_postbacks,feed';
+    return request(`${api()}/${getSetting('ig_page_id')}/subscribed_apps?subscribed_fields=${fields}&access_token=${encodeURIComponent(callToken())}`, { method: 'POST' });
+  }
   const fields = 'comments,messages,messaging_postbacks';
   return request(`${api()}/me/subscribed_apps?subscribed_fields=${fields}&access_token=${encodeURIComponent(token())}`, { method: 'POST' });
 }
 
 /** Los tokens de larga duración de Instagram duran 60 días: se renuevan cada 7. */
 export async function refreshTokenIfNeeded() {
-  if (!token()) return;
+  if (!token() || isFbMode()) return; // el token de usuario del sistema no caduca
   const last = Number(getSetting('ig_token_refreshed_at', '0'));
   if (Date.now() - last < 7 * 24 * 3600 * 1000) return;
   try {
@@ -55,9 +79,9 @@ export async function refreshTokenIfNeeded() {
 }
 
 async function sendMessage(recipient, message) {
-  return request(`${api()}/${myId()}/messages`, {
+  return request(`${api()}/${senderId()}/messages`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token()}` },
+    headers: { Authorization: `Bearer ${callToken()}` },
     body: { recipient, message },
   });
 }
@@ -76,14 +100,14 @@ async function sendWithButton(recipient, text, ruleId) {
 }
 
 export async function isFollower(igsid) {
-  const r = await request(`${api()}/${igsid}?fields=username,is_user_follow_business&access_token=${encodeURIComponent(token())}`);
+  const r = await request(`${api()}/${igsid}?fields=username,is_user_follow_business&access_token=${encodeURIComponent(callToken())}`);
   return { follows: r.is_user_follow_business === true, username: r.username || '' };
 }
 
 async function replyToComment(commentId, text) {
   return request(`${api()}/${commentId}/replies`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token()}` },
+    headers: { Authorization: `Bearer ${callToken()}` },
     body: { message: text },
   });
 }

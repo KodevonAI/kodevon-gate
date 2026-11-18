@@ -53,7 +53,7 @@ function setupSection() {
   <p class="muted">Pega aquí las credenciales (se guardan en el servidor, no hace falta redesplegar). Haz clic en cualquier valor <code>así</code> para copiarlo.</p>
   <form method="post" action="/admin/credentials">
     <div class="row">
-      ${cred('cred_ig_app_secret', 'Instagram · App Secret', config.instagram.appSecret, true, 'Meta → tu app → Instagram → API setup with Instagram login → "Instagram app secret"')}
+      ${cred('cred_ig_app_secret', 'Instagram · App Secret', config.instagram.appSecret, true, 'Meta → tu app → Configuración de la app → Información básica → Clave secreta de la aplicación')}
       ${cred('cred_tt_app_id', 'TikTok · App ID (client key)', config.tiktok.appId, false)}
       ${cred('cred_tt_app_secret', 'TikTok · App Secret', config.tiktok.appSecret)}
     </div>
@@ -84,7 +84,7 @@ export function renderAdmin({ flash = '' } = {}) {
     let connect = '';
     if (p === 'instagram') {
       connect = `<form method="post" action="/admin/instagram/token" class="inline">
-          <input name="token" placeholder="Pega aquí el token de acceso de Instagram" autocomplete="off">
+          <input name="token" placeholder="Pega aquí el token del usuario del sistema (EAA...) o de Instagram (IG...)" autocomplete="off">
           <button>Guardar token</button></form>
         <form method="post" action="/admin/instagram/subscribe" class="inline"><button>Activar webhooks de la cuenta</button></form>
         <p class="muted">Webhook para Meta: <code>${esc(config.baseUrl)}/webhooks/instagram</code></p>`;

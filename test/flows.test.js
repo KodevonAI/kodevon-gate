@@ -156,3 +156,20 @@ test('YouTube: primera pasada no responde; luego responde con link y omite mis c
   await yt.processThreads([th('t0', 'guia'), th('t1', 'GUIA porfa'), th('t2', 'guia', 'MYCH'), th('t3', 'gracias')], { reply });
   assert.deepEqual(replies, [['t1', 'Aquí juan: https://kodevon.com/guia']]);
 });
+
+test('IG modo Facebook (token EAA): carga página, usa graph.facebook.com y token de página', async () => {
+  setSetting('ig_access_token', 'EAAsystem');
+  mockFetch((url) => {
+    if (url.includes('/me/accounts')) return { data: [{ id: 'PAGE1', name: 'Kodevon', access_token: 'PAGETOK', instagram_business_account: { id: '777', username: 'kodevon' } }] };
+    if (url.endsWith('/PAGE1/messages')) return { recipient_id: 'S1' };
+    return {};
+  });
+  const acc = await ig.loadAccount();
+  assert.equal(acc.id, '777');
+  saveRule({ platform: 'instagram', keywords: 'guia', public_reply: 'ok', ask_follow_msg: 'sigue', content_msg: 'x', active: true });
+  await ig.handleComment({ id: 'c9', text: 'guia', from: { id: 'u9', username: 'z' } });
+  assert.match(calls.at(-2).url, /^https:\/\/graph\.facebook\.com\/v[\d.]+\/c9\/replies$/);
+  assert.match(calls.at(-1).url, /graph\.facebook\.com\/v[\d.]+\/PAGE1\/messages$/);
+  await ig.subscribeWebhooks();
+  assert.match(calls.at(-1).url, /PAGE1\/subscribed_apps\?subscribed_fields=messages,messaging_postbacks,feed&access_token=PAGETOK/);
+});
