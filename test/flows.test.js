@@ -171,5 +171,5 @@ test('IG modo Facebook (token EAA): carga página, usa graph.facebook.com y toke
   assert.match(calls.at(-2).url, /^https:\/\/graph\.facebook\.com\/v[\d.]+\/c9\/replies$/);
   assert.match(calls.at(-1).url, /graph\.facebook\.com\/v[\d.]+\/PAGE1\/messages$/);
   await ig.subscribeWebhooks();
-  assert.match(calls.at(-1).url, /PAGE1\/subscribed_apps\?subscribed_fields=messages,messaging_postbacks,feed&access_token=PAGETOK/);
+  assert.match(calls.at(-1).url, /PAGE1\/subscribed_apps\?subscribed_fields=feed&access_token=PAGETOK/);
 });

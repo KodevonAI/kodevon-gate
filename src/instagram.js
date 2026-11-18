@@ -54,8 +54,10 @@ export async function loadAccount() {
 /** Suscribe la cuenta a los webhooks de comentarios y mensajes. */
 export async function subscribeWebhooks() {
   if (isFbMode()) {
-    const fields = 'messages,messaging_postbacks,feed';
-    return request(`${api()}/${getSetting('ig_page_id')}/subscribed_apps?subscribed_fields=${fields}&access_token=${encodeURIComponent(callToken())}`, { method: 'POST' });
+    // Los eventos de Instagram llegan por el objeto "instagram" de la app; la página solo necesita
+    // tener la app instalada. Se usa "feed" (no exige pages_messaging) y, si falla, "name".
+    const sub = (fields) => request(`${api()}/${getSetting('ig_page_id')}/subscribed_apps?subscribed_fields=${fields}&access_token=${encodeURIComponent(callToken())}`, { method: 'POST' });
+    try { return await sub('feed'); } catch { return sub('name'); }
   }
   const fields = 'comments,messages,messaging_postbacks';
   return request(`${api()}/me/subscribed_apps?subscribed_fields=${fields}&access_token=${encodeURIComponent(token())}`, { method: 'POST' });
