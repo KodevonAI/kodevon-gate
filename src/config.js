@@ -7,6 +7,7 @@ export const config = {
   dbPath: env.DB_PATH || './data/gate.db',
   adminUser: env.ADMIN_USER || 'admin',
   adminPassword: env.ADMIN_PASSWORD || '',
+  apiKey: env.API_KEY || '',
 
   instagram: {
     appSecret: env.IG_APP_SECRET || '',

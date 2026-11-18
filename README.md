@@ -49,3 +49,31 @@ npm install
 npm test
 ADMIN_PASSWORD=x node src/server.js
 ```
+
+## API para automatizar reglas
+
+Base: `https://gate.kodevon.com/api/v1` · Documentación JSON en `GET /api/v1` (pública).
+
+Autenticación: header `Authorization: Bearer <API_KEY>` (o `X-API-Key`). La clave se genera sola al arrancar y se ve/rota en el panel → **Conexiones → API**. Si defines `API_KEY` en Coolify, esa tiene prioridad.
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/status` | Conexión de cada plataforma y nº de reglas |
+| GET | `/rules?platform=&active=` | Listar reglas |
+| POST | `/rules` | Crear una regla (objeto) o varias (arreglo → 201 / 207 con resultados por ítem) |
+| GET · PATCH · PUT · DELETE | `/rules/:id` | Ver, editar parcialmente o borrar |
+| GET · POST | `/{instagram\|tiktok\|youtube}/rules` | Igual, fijando la plataforma |
+| GET · PATCH · DELETE | `/{plataforma}/rules/:id` | Igual, validando la plataforma |
+
+Campos: `name`, `keywords` (arreglo o texto separado por comas), `media_url` (link del reel/post de IG o video de YouTube; se convierte al ID), `public_reply`, `ask_follow_msg`, `not_following_msg`, `content_msg`, `active` (por defecto `true`). Variables: `{username}`, `{nombre}`.
+
+Mínimo por plataforma (el resto toma textos por defecto):
+- **instagram**: `keywords`, `content_msg`
+- **tiktok**: `keywords`, `content_msg`
+- **youtube**: `keywords`, `public_reply` (pon ahí el link)
+
+```bash
+curl -X POST https://gate.kodevon.com/api/v1/instagram/rules \
+  -H "Authorization: Bearer $KGATE_API_KEY" -H "Content-Type: application/json" \
+  -d '{"name":"Guía Claude","keywords":["claude"],"media_url":"https://www.instagram.com/reel/XXXX/","content_msg":"Aquí tienes: https://..."}'
+```

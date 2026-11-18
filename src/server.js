@@ -1,11 +1,13 @@
 import { config, applyPanelCredentials } from './config.js';
 import { openDb, logEvent, getSetting } from './db.js';
 import { createApp } from './app.js';
+import { ensureApiKey } from './api.js';
 import * as ig from './instagram.js';
 import * as yt from './youtube.js';
 
 openDb(config.dbPath);
 applyPanelCredentials(getSetting);
+ensureApiKey();
 const app = createApp();
 
 app.listen(config.port, () => {

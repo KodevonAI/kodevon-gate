@@ -1,11 +1,13 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import { config, PANEL_CREDENTIALS, applyPanelCredentials } from './config.js';
-import { getSetting, setSetting, saveRule, deleteRule, logEvent } from './db.js';
+import { getSetting, setSetting, saveRule, deleteRule, getRule, logEvent } from './db.js';
 import * as ig from './instagram.js';
 import * as tt from './tiktok.js';
 import * as yt from './youtube.js';
 import { renderAdmin } from './admin.js';
+import { createApiRouter, rotateApiKey } from './api.js';
+import { buildRule, RuleError } from './rules.js';
 
 function basicAuth(req, res, next) {
   if (!config.adminPassword) return res.status(503).send('Configura ADMIN_PASSWORD para usar el panel.');
@@ -85,24 +87,29 @@ export function createApp() {
     catch (e) { logEvent('youtube', 'error', e.message); res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Error YouTube: ${e.message}`)}`); }
   });
 
+  // ---------- API ----------
+  app.use('/api/v1', createApiRouter());
+
   // ---------- Panel ----------
   const admin = express.Router();
   admin.use(basicAuth);
   admin.get('/', (req, res) => res.send(renderAdmin({ flash: req.query.ok ? String(req.query.ok) : '', tab: String(req.query.tab || 'reglas') })));
   admin.post('/rules', async (req, res) => {
-    const b = { ...req.body };
-    if (!['instagram', 'tiktok', 'youtube'].includes(b.platform) || !String(b.keywords || '').trim()) return res.redirect('/admin?tab=reglas&ok=Datos+inv%C3%A1lidos');
+    const b = { ...req.body, active: req.body.active === 'on' };
     try {
-      if (b.platform === 'instagram' && b.media_id) b.media_id = await ig.resolveMediaId(b.media_id);
-      if (b.platform === 'youtube' && b.media_id) {
-        const m = String(b.media_id).match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
-        if (m) b.media_id = m[1];
-      }
+      const existing = b.id ? getRule(Number(b.id)) : null;
+      const rule = await buildRule(b, { existing });
+      saveRule(existing ? { ...rule, id: existing.id } : rule);
     } catch (e) {
-      return res.redirect(`/admin?tab=reglas&ok=${encodeURIComponent(`No se guardó: ${e.message}`)}`);
+      const msg = e instanceof RuleError ? e.message : `No se guardó: ${e.message}`;
+      return res.redirect(`/admin?tab=reglas&ok=${encodeURIComponent(msg)}`);
     }
-    saveRule({ ...b, active: b.active === 'on' });
     res.redirect('/admin?tab=reglas&ok=Regla+guardada');
+  });
+  admin.post('/api-key/rotate', (_req, res) => {
+    if (config.apiKey) return res.redirect('/admin?tab=conexiones&ok=La+clave+viene+de+API_KEY+en+Coolify;+c%C3%A1mbiala+all%C3%AD');
+    rotateApiKey();
+    res.redirect('/admin?tab=conexiones&ok=Nueva+API+key+generada');
   });
   admin.post('/credentials', (req, res) => {
     let n = 0;
@@ -139,6 +146,14 @@ export function createApp() {
     res.redirect(yt.authorizeUrl(newState('yt_state')));
   });
   app.use('/admin', admin);
+
+  // JSON mal formado u otros errores de parseo
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, _next) => {
+    const status = err.status || 500;
+    if (req.path.startsWith('/api/')) return res.status(status).json({ error: err.type === 'entity.parse.failed' ? 'JSON inválido' : err.message });
+    res.status(status).send(err.message);
+  });
 
   return app;
 }

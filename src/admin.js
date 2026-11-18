@@ -1,5 +1,6 @@
 import { config } from './config.js';
 import { getSetting, listRules, getDb } from './db.js';
+import { apiKey } from './api.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -73,7 +74,18 @@ function setupSection() {
     <tr><td>TikTok · Redirect URI</td><td>${copy(`${b}/tiktok/callback`)}</td></tr>
     <tr><td>Google · Redirect URI autorizado</td><td>${copy(`${b}/youtube/callback`)}</td></tr>
     <tr><td>Google · Scope</td><td>${copy('https://www.googleapis.com/auth/youtube.force-ssl')}</td></tr>
-  </table></details></section>`;
+  </table></details></section>
+  <section><h2>🔌 API para automatizar reglas</h2>
+  <p class="muted">Crea, edita y borra reglas desde n8n, scripts u otras apps. Envía la clave en el header <code>Authorization: Bearer &lt;clave&gt;</code>. Documentación: <a href="${b}/api/v1" target="_blank">${b}/api/v1</a></p>
+  <table>
+    <tr><td>Base URL</td><td>${copy(`${b}/api/v1`)}</td></tr>
+    <tr><td>API key</td><td>${apiKey() ? copy(esc(apiKey())) : '<span class="no">sin generar</span>'}</td></tr>
+  </table>
+  <form method="post" action="/admin/api-key/rotate" onsubmit="return confirm('La clave actual dejará de funcionar. ¿Continuar?')"><button class="sec">Generar nueva clave</button></form>
+  <details><summary>Ejemplo (curl)</summary><pre>curl -X POST ${b}/api/v1/instagram/rules \\
+  -H "Authorization: Bearer $KGATE_API_KEY" -H "Content-Type: application/json" \\
+  -d '{"name":"Guía Claude","keywords":["claude"],"media_url":"https://www.instagram.com/reel/XXXX/","content_msg":"Aquí tienes: https://..."}'</pre></details>
+  </section>`;
 }
 
 function connectBlock(p) {
