@@ -43,6 +43,39 @@ function ruleForm(platform, r = {}) {
   </form>`;
 }
 
+function setupSection() {
+  const b = esc(config.baseUrl);
+  const ok = (v) => (v ? '<span class="okc">✔ configurado</span>' : '<span class="no">✗ falta</span>');
+  const cred = (key, label, isSet, secret = true, hint = '') => `<label>${label} ${ok(isSet)}${hint ? `<small>${hint}</small>` : ''}
+    <input name="${key}" type="${secret ? 'password' : 'text'}" autocomplete="off" placeholder="${isSet ? 'Dejar vacío para no cambiar' : 'Pegar aquí'}"></label>`;
+  const copy = (v) => `<code class="cp" onclick="navigator.clipboard.writeText(this.innerText);this.classList.add('copied')">${v}</code>`;
+  return `<section><h2>⚡ Configuración rápida</h2>
+  <p class="muted">Pega aquí las credenciales (se guardan en el servidor, no hace falta redesplegar). Haz clic en cualquier valor <code>así</code> para copiarlo.</p>
+  <form method="post" action="/admin/credentials">
+    <div class="row">
+      ${cred('cred_ig_app_secret', 'Instagram · App Secret', config.instagram.appSecret, true, 'Meta → tu app → Instagram → API setup with Instagram login → "Instagram app secret"')}
+      ${cred('cred_tt_app_id', 'TikTok · App ID (client key)', config.tiktok.appId, false)}
+      ${cred('cred_tt_app_secret', 'TikTok · App Secret', config.tiktok.appSecret)}
+    </div>
+    <div class="row">
+      ${cred('cred_tt_username', 'TikTok · tu usuario (sin @)', config.tiktok.username, false)}
+      ${cred('cred_apify_token', 'Apify · API token', config.tiktok.apifyToken, true, 'console.apify.com → Settings → API & Integrations')}
+      ${cred('cred_yt_client_id', 'YouTube · OAuth Client ID', config.youtube.clientId, false)}
+    </div>
+    <div class="row">${cred('cred_yt_client_secret', 'YouTube · OAuth Client Secret', config.youtube.clientSecret)}</div>
+    <button>Guardar credenciales</button>
+  </form>
+  <details open><summary>Valores para pegar en Meta / TikTok / Google</summary>
+  <table>
+    <tr><td>Meta · Callback URL del webhook</td><td>${copy(`${b}/webhooks/instagram`)}</td></tr>
+    <tr><td>Meta · Verify token</td><td>${config.instagram.verifyToken ? copy(esc(config.instagram.verifyToken)) : '<span class="no">define IG_VERIFY_TOKEN</span>'}</td></tr>
+    <tr><td>Meta · Campos a suscribir</td><td>${copy('comments')} ${copy('messages')} ${copy('messaging_postbacks')}</td></tr>
+    <tr><td>TikTok · Redirect URI</td><td>${copy(`${b}/tiktok/callback`)}</td></tr>
+    <tr><td>Google · Redirect URI autorizado</td><td>${copy(`${b}/youtube/callback`)}</td></tr>
+    <tr><td>Google · Scope</td><td>${copy('https://www.googleapis.com/auth/youtube.force-ssl')}</td></tr>
+  </table></details></section>`;
+}
+
 export function renderAdmin({ flash = '' } = {}) {
   const st = status();
   const events = getDb().prepare('SELECT * FROM events ORDER BY id DESC LIMIT 60').all();
@@ -85,10 +118,12 @@ button,.btn{background:var(--o);color:#fff;border:0;border-radius:6px;padding:8p
 .danger{background:#5a2a2a}.actions{display:flex;gap:12px;align-items:center}.check{display:flex;gap:6px;align-items:center;margin:0}.check input{width:auto;margin:0}
 .inline{display:flex;gap:8px;margin:8px 0}.inline input{margin:0}.flash{background:#2d3a22;padding:10px 14px;border-radius:6px}
 summary{cursor:pointer;color:var(--o);margin-top:12px;font-weight:600}table{width:100%;font-size:12px;border-collapse:collapse}td{padding:4px;border-bottom:1px solid #333;vertical-align:top}
+.okc{color:#9be59b;font-weight:400}.no{color:#ff8a80;font-weight:400}.cp{cursor:pointer}.cp.copied{outline:1px solid var(--o)}
 .error{color:#ff8a80}.warn{color:#ffd180}@media(max-width:700px){.row{grid-template-columns:1fr}}
 </style></head><body><main>
 <h1><b>Kodevon</b> Gate</h1><p class="muted">Palabras clave → verificación de seguidor → contenido. Variables disponibles en los textos: <code>{username}</code></p>
 ${flash ? `<p class="flash">${esc(flash)}</p>` : ''}
+${setupSection()}
 ${sections}
 <section><h2>Actividad reciente</h2><table>${events.map((e) => `<tr><td class="muted">${esc(e.created_at)}</td><td>${esc(e.platform)}</td><td class="${esc(e.level)}">${esc(e.message)}</td></tr>`).join('') || '<tr><td class="muted">Sin actividad todavía</td></tr>'}</table></section>
 </main></body></html>`;

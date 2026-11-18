@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import express from 'express';
-import { config } from './config.js';
+import { config, PANEL_CREDENTIALS, applyPanelCredentials } from './config.js';
 import { getSetting, setSetting, saveRule, deleteRule, logEvent } from './db.js';
 import * as ig from './instagram.js';
 import * as tt from './tiktok.js';
@@ -79,6 +79,15 @@ export function createApp() {
     if (!['instagram', 'tiktok', 'youtube'].includes(b.platform) || !String(b.keywords || '').trim()) return res.redirect('/admin?ok=Datos+inv%C3%A1lidos');
     saveRule({ ...b, active: b.active === 'on' });
     res.redirect('/admin?ok=Regla+guardada');
+  });
+  admin.post('/credentials', (req, res) => {
+    let n = 0;
+    for (const key of Object.keys(PANEL_CREDENTIALS)) {
+      const v = String(req.body[key] ?? '').trim();
+      if (v) { setSetting(key, v); n++; } // vacío = no cambiar
+    }
+    applyPanelCredentials(getSetting);
+    res.redirect(`/admin?ok=${encodeURIComponent(`${n} credencial(es) guardada(s)`)}`);
   });
   admin.post('/rules/:id/delete', (req, res) => { deleteRule(Number(req.params.id)); res.redirect('/admin?ok=Regla+eliminada'); });
   admin.post('/instagram/token', async (req, res) => {

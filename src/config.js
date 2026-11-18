@@ -37,3 +37,24 @@ export const config = {
     pollSeconds: Number(env.YT_POLL_SECONDS || 120),
   },
 };
+
+/** Credenciales editables desde el panel: clave en BD -> [sección, campo]. */
+export const PANEL_CREDENTIALS = {
+  cred_ig_app_secret: ['instagram', 'appSecret'],
+  cred_tt_app_id: ['tiktok', 'appId'],
+  cred_tt_app_secret: ['tiktok', 'appSecret'],
+  cred_tt_username: ['tiktok', 'username'],
+  cred_apify_token: ['tiktok', 'apifyToken'],
+  cred_yt_client_id: ['youtube', 'clientId'],
+  cred_yt_client_secret: ['youtube', 'clientSecret'],
+};
+
+/** Los valores guardados en el panel tienen prioridad sobre las variables de entorno. */
+export function applyPanelCredentials(getSetting) {
+  for (const [key, [section, field]] of Object.entries(PANEL_CREDENTIALS)) {
+    let v = getSetting(key, '');
+    if (!v) continue;
+    if (field === 'username') v = v.replace(/^@/, '').toLowerCase();
+    config[section][field] = v;
+  }
+}
