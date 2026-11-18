@@ -38,6 +38,21 @@ export function createApp() {
   app.get('/', (_req, res) => res.redirect('/admin'));
   app.get('/health', (_req, res) => res.json({ ok: true }));
 
+  // ---------- Páginas legales (requeridas por Meta / TikTok / Google) ----------
+  const legal = (title, body) => `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Kodevon</title>
+<style>body{font:16px/1.6 Inter,system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 20px;color:#1A1A1A}h1{font-family:Outfit,Inter,sans-serif}h1 b{color:#FF5F1F}</style></head>
+<body><h1><b>Kodevon</b> · ${title}</h1>${body}<p style="color:#8C8C8C">Kodevon S.A.S · Popayán, Colombia · <a href="mailto:ventas@kodevon.com">ventas@kodevon.com</a></p></body></html>`;
+  app.get('/privacidad', (_req, res) => res.send(legal('Política de privacidad', `
+<p>Este servicio automatiza respuestas a comentarios y mensajes directos de las cuentas oficiales de Kodevon en Instagram, TikTok y YouTube.</p>
+<p><b>Datos que tratamos:</b> identificador de la conversación o del usuario en la plataforma, nombre de usuario, texto del comentario o mensaje y si la persona sigue nuestra cuenta. Solo se usan para responder y entregar el contenido solicitado.</p>
+<p><b>No vendemos ni compartimos</b> estos datos con terceros. Se almacenan en nuestro propio servidor y se conservan solo el tiempo necesario para operar el servicio.</p>
+<p>Puedes solicitar la eliminación de tus datos en <a href="/eliminar-datos">/eliminar-datos</a>.</p>`)));
+  app.get('/eliminar-datos', (_req, res) => res.send(legal('Eliminación de datos', `
+<p>Para eliminar los datos asociados a tus interacciones con nuestras cuentas, escribe a <a href="mailto:ventas@kodevon.com?subject=Eliminar%20mis%20datos">ventas@kodevon.com</a> con el asunto <b>"Eliminar mis datos"</b> e indica tu nombre de usuario de Instagram, TikTok o YouTube.</p>
+<p>Eliminaremos tus datos en un plazo máximo de 15 días hábiles y te confirmaremos por correo.</p>`)));
+  app.get('/terminos', (_req, res) => res.send(legal('Términos del servicio', `
+<p>Al comentar o escribir una palabra clave a nuestras cuentas aceptas recibir una respuesta automática con el contenido solicitado. El servicio es gratuito y puede cambiar o suspenderse en cualquier momento.</p>`)));
+
   // ---------- Instagram ----------
   app.get('/webhooks/instagram', (req, res) => {
     if (req.query['hub.mode'] === 'subscribe' && config.instagram.verifyToken && req.query['hub.verify_token'] === config.instagram.verifyToken) {
