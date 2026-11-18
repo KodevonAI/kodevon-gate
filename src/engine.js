@@ -27,7 +27,7 @@ export function matchRule(platform, text, mediaId = '') {
 /** Reemplaza {username} y {nombre} en los textos. */
 export function render(template, vars = {}) {
   return String(template || '').replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null && vars[k] !== '' ? String(vars[k]) : ''))
-    .replace(/@\s/g, '').replace(/\s{2,}/g, ' ').trim();
+    .replace(/ +([!?,.])/g, '$1').replace(/[ \t]{2,}/g, ' ').trim(); // conserva saltos de línea
 }
 
 export function isConfirmation(text, words) {

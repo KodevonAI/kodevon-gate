@@ -173,3 +173,9 @@ test('IG modo Facebook (token EAA): carga página, usa graph.facebook.com y toke
   await ig.subscribeWebhooks();
   assert.match(calls.at(-1).url, /PAGE1\/subscribed_apps\?subscribed_fields=feed&access_token=PAGETOK/);
 });
+
+test('render conserva saltos de línea y limpia {username} vacío', async () => {
+  const { render } = await import('../src/engine.js');
+  assert.equal(render('¡Hola {username}!\n\n1️⃣ Paso', { username: '' }), '¡Hola!\n\n1️⃣ Paso');
+  assert.equal(render('¡Listo {username}! Ok', { username: 'ana' }), '¡Listo ana! Ok');
+});
