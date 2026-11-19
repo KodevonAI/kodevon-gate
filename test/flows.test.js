@@ -69,15 +69,17 @@ test('IG: comentario → respuesta pública + DM con botón; botón → no sigue
   });
   const comment = { object: 'instagram', entry: [{ id: '999', changes: [{ field: 'comments', value: { id: 'c1', text: 'GUIA', from: { id: 'u1', username: 'ana' }, media: { id: 'm1' } } }] }] };
   await ig.handleWebhook(comment);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.match(calls[0].url, /\/c1\/replies$/);
   assert.equal(calls[0].body.message, 'Te escribí ana');
-  assert.deepEqual(calls[1].body.recipient, { comment_id: 'c1' });
-  assert.equal(calls[1].body.message.quick_replies[0].payload, `FOLLOW_CHECK:${ruleId}`);
+  assert.match(calls[1].url, /\/u1\?fields=/); // verifica follow antes del primer DM
+  assert.deepEqual(calls[2].body.recipient, { comment_id: 'c1' });
+  assert.equal(calls[2].body.message.text, 'Sígueme y toca el botón');
+  assert.equal(calls[2].body.message.quick_replies[0].payload, `FOLLOW_CHECK:${ruleId}`);
 
   // Duplicado del webhook no repite nada
   await ig.handleWebhook(comment);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
 
   // Toca el botón sin seguir
   const tap = (mid) => ({ object: 'instagram', entry: [{ id: '999', messaging: [{ sender: { id: 'IGSID1' }, recipient: { id: '999' }, message: { mid, text: 'Ya te sigo', quick_reply: { payload: `FOLLOW_CHECK:${ruleId}` } } }] }] });
@@ -88,6 +90,35 @@ test('IG: comentario → respuesta pública + DM con botón; botón → no sigue
   await ig.handleWebhook(tap('b'));
   assert.equal(calls.at(-1).body.message.text, 'Aquí está: https://x.co');
   assert.equal(getDb().prepare('SELECT status FROM sessions').get().status, 'delivered');
+});
+
+test('IG: si quien comenta ya sigue la cuenta, recibe el contenido directo sin el gate', async () => {
+  igRule();
+  mockFetch((url) => {
+    if (url.includes('/replies')) return { id: 'r1' };
+    if (url.includes('/u7?fields=')) return { username: 'leo', is_user_follow_business: true };
+    if (url.endsWith('/999/messages')) return { recipient_id: 'IGSID7', message_id: 'm' };
+    return {};
+  });
+  await ig.handleComment({ id: 'c7', text: 'guia', from: { id: 'u7', username: 'leo' } });
+  const dm = calls.at(-1);
+  assert.deepEqual(dm.body.recipient, { comment_id: 'c7' });
+  assert.equal(dm.body.message.text, 'Aquí está: https://x.co');
+  assert.equal(dm.body.message.quick_replies, undefined);
+  assert.equal(getDb().prepare('SELECT status FROM sessions').get().status, 'delivered');
+});
+
+test('IG: si no se puede verificar al comentar, envía el gate con botón', async () => {
+  const ruleId = igRule();
+  mockFetch((url) => {
+    if (url.includes('/u8?fields=')) return { __status: 400, body: { error: { message: 'no consent' } } };
+    if (url.endsWith('/999/messages')) return { recipient_id: 'IGSID8', message_id: 'm' };
+    return {};
+  });
+  await ig.handleComment({ id: 'c8', text: 'guia', from: { id: 'u8', username: 'mia' } });
+  assert.equal(calls.at(-1).body.message.text, 'Sígueme y toca el botón');
+  assert.equal(calls.at(-1).body.message.quick_replies[0].payload, `FOLLOW_CHECK:${ruleId}`);
+  assert.equal(getDb().prepare('SELECT status FROM sessions').get().status, 'awaiting_follow');
 });
 
 test('IG: procesa la confirmación cuando Meta la envía en entry.changes.messages', async () => {
@@ -273,7 +304,8 @@ test('IG modo Facebook (token EAA): carga página, usa graph.facebook.com y toke
   assert.equal(acc.id, '777');
   saveRule({ platform: 'instagram', keywords: 'guia', public_reply: 'ok', ask_follow_msg: 'sigue', content_msg: 'x', active: true });
   await ig.handleComment({ id: 'c9', text: 'guia', from: { id: 'u9', username: 'z' } });
-  assert.match(calls.at(-2).url, /^https:\/\/graph\.facebook\.com\/v[\d.]+\/c9\/replies$/);
+  assert.match(calls.at(-3).url, /^https:\/\/graph\.facebook\.com\/v[\d.]+\/c9\/replies$/);
+  assert.match(calls.at(-2).url, /graph\.facebook\.com\/v[\d.]+\/u9\?fields=.*access_token=PAGETOK/);
   assert.match(calls.at(-1).url, /graph\.facebook\.com\/v[\d.]+\/PAGE1\/messages$/);
   await ig.subscribeWebhooks();
   assert.match(calls.at(-1).url, /PAGE1\/subscribed_apps\?subscribed_fields=feed&access_token=PAGETOK/);

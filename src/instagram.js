@@ -154,12 +154,40 @@ export async function handleComment(value) {
     try { await replyToComment(commentId, render(rule.public_reply, vars)); } catch (e) { logEvent(P, 'error', `Respuesta pública falló: ${e.message}`); }
   }
   try {
-    const r = await sendWithButton({ comment_id: commentId }, render(rule.ask_follow_msg, vars), rule.id);
-    const userKey = r.recipient_id || from.id;
-    upsertSession(P, userKey, rule.id, from.username || '', 'awaiting_follow');
+    await deliverOrAsk({ comment_id: commentId }, from.id, rule, from.username || '');
   } catch (e) {
     logEvent(P, 'error', `DM privado falló: ${e.message}`);
   }
+}
+
+/** Verifica si sigue la cuenta; null si Instagram no permite comprobarlo ahora. */
+async function tryIsFollower(igsid) {
+  if (!igsid) return null;
+  try {
+    return await isFollower(igsid);
+  } catch (e) {
+    logEvent(P, 'warn', `No se pudo verificar seguidor antes del primer DM: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * Primer mensaje del flujo: si ya sigue la cuenta entrega el contenido directo;
+ * si no sigue (o no se puede verificar) envía el mensaje del gate con el botón.
+ */
+async function deliverOrAsk(recipient, igsid, rule, username) {
+  const res = await tryIsFollower(igsid);
+  const name = res?.username || username;
+  const vars = { username: name, nombre: name };
+  if (res?.follows) {
+    const r = await sendMessage(recipient, { text: render(rule.content_msg, vars) });
+    upsertSession(P, r.recipient_id || igsid, rule.id, name, 'delivered');
+    logEvent(P, 'info', `@${name} ya seguía la cuenta: contenido entregado directo (regla #${rule.id})`);
+    return;
+  }
+  const r = await sendWithButton(recipient, render(rule.ask_follow_msg, vars), rule.id);
+  upsertSession(P, r.recipient_id || igsid, rule.id, name, 'awaiting_follow');
+  logEvent(P, 'info', `@${name || igsid} ${res ? 'no sigue la cuenta' : 'sin verificar'}: se envía mensaje del gate (regla #${rule.id})`);
 }
 
 async function checkAndDeliver(igsid, session) {
@@ -206,6 +234,7 @@ export async function handleMessaging(m) {
 
     if (payload.startsWith(PAYLOAD_PREFIX)) {
       const ruleId = Number(payload.slice(PAYLOAD_PREFIX.length));
+      logEvent(P, 'info', `Botón «Ya te sigo» recibido de ${sender} (regla #${ruleId}); verificando follow`);
       upsertSession(P, sender, ruleId, '', 'awaiting_follow');
       const s = getPendingSession(P, sender);
       if (s) await checkAndDeliver(sender, s);
@@ -215,9 +244,8 @@ export async function handleMessaging(m) {
     // ¿Escribió la palabra clave por DM?
     const rule = text ? matchRule(P, text) : null;
     if (rule) {
-      upsertSession(P, sender, rule.id, '', 'awaiting_follow');
-      await sendWithButton({ id: sender }, render(rule.ask_follow_msg, {}), rule.id);
       logEvent(P, 'info', `DM con palabra clave (regla #${rule.id})`);
+      await deliverOrAsk({ id: sender }, sender, rule, '');
       return;
     }
 
