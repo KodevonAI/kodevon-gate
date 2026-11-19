@@ -90,6 +90,27 @@ test('IG: comentario → respuesta pública + DM con botón; botón → no sigue
   assert.equal(getDb().prepare('SELECT status FROM sessions').get().status, 'delivered');
 });
 
+test('IG: procesa la confirmación cuando Meta la envía en entry.changes.messages', async () => {
+  const ruleId = igRule();
+  mockFetch((url) => {
+    if (url.endsWith('/999/messages')) return { recipient_id: 'IGSID1', message_id: 'sent' };
+    if (url.includes('/IGSID1?fields=')) return { username: 'ana', is_user_follow_business: true };
+    return {};
+  });
+  await ig.handleComment({ id: 'c6', text: 'guia', from: { id: 'u6', username: 'ana' } });
+
+  await ig.handleWebhook({ object: 'instagram', entry: [{ id: '999', changes: [{
+    field: 'messages', value: {
+      sender: { id: 'IGSID1' }, recipient: { id: '999' }, timestamp: Date.now(),
+      message: { mid: 'changes-mid-1', text: '✅ Ya te sigo', quick_reply: { payload: `FOLLOW_CHECK:${ruleId}` } },
+    },
+  }] }] });
+
+  assert.ok(calls.some((call) => call.url.includes('/IGSID1?fields=')));
+  assert.equal(calls.at(-1).body.message.text, 'Aquí está: https://x.co');
+  assert.equal(getDb().prepare('SELECT status FROM sessions').get().status, 'delivered');
+});
+
 test('IG: ignora mis propios comentarios', async () => {
   igRule();
   mockFetch(() => ({}));

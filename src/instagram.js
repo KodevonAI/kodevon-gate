@@ -236,6 +236,9 @@ export async function handleWebhook(body) {
   for (const entry of body.entry || []) {
     for (const change of entry.changes || []) {
       if (change.field === 'comments') await handleComment(change.value || {});
+      else if (change.field === 'messages' || change.field === 'messaging_postbacks') {
+        await handleMessaging(change.value || {});
+      }
     }
     for (const m of entry.messaging || []) await handleMessaging(m);
   }
