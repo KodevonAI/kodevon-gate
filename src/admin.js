@@ -8,7 +8,7 @@ const PLATFORM_LABEL = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'You
 
 const HELP = {
   instagram: 'Comentario con palabra clave → respuesta pública → DM pidiendo seguir con botón "Ya te sigo" → se verifica el follow → se envía el contenido. También funciona si la persona escribe la palabra por DM.',
-  tiktok: 'La persona te escribe la palabra clave por DM → se le pide seguirte y responder LISTO → se verifica en su lista pública de "siguiendo" → se envía el contenido (si su lista es privada se entrega igual).',
+  tiktok: 'Comentario con palabra clave → se responde el comentario pidiéndole que te escriba por DM → cuando escribe (la palabra o cualquier cosa) se verifica si te sigue → si te sigue recibe el contenido; si no, se le pide seguirte y responder LISTO. Si su lista de seguidos es privada, se entrega igual. Escribir la palabra directo por DM también funciona.',
   youtube: 'Comentario con palabra clave → se responde el comentario con el texto de "Respuesta pública" (pon ahí el link). YouTube no tiene DMs.',
 };
 
@@ -30,10 +30,10 @@ function ruleForm(platform, r = {}) {
     <div class="row">
       <label>Nombre<input name="name" value="${esc(r.name)}" placeholder="Ej: Guía de automatización"></label>
       <label>Palabras clave<small>Separadas por coma. No importan mayúsculas ni tildes.</small><input name="keywords" required value="${esc(r.keywords)}" placeholder="GUIA, CALCULO"></label>
-      <label>Link o ID del ${isYt ? 'video' : 'post'} (opcional)<small>Pega el link del ${isYt ? 'video' : 'post/reel'}. Vacío = aplica a todos</small><input name="media_id" value="${esc(r.media_id)}"></label>
+      <label>Link o ID del ${platform === 'instagram' ? 'post' : 'video'} (opcional)<small>Pega el link del ${platform === 'instagram' ? 'post/reel' : 'video'}. Vacío = aplica a todos</small><input name="media_id" value="${esc(r.media_id)}"></label>
     </div>
-    ${platform !== 'tiktok' ? field('public_reply', 'Respuesta pública al comentario', isYt ? 'Incluye aquí el link al contenido.' : 'Ej: ¡Listo {username}! Te escribí por DM 📩') : ''}
-    ${!isYt ? field('ask_follow_msg', 'DM: pedir que te siga', platform === 'tiktok' ? 'Pide que te siga y responda LISTO.' : 'Se envía con el botón "Ya te sigo".', 3) : ''}
+    ${field('public_reply', 'Respuesta pública al comentario', isYt ? 'Incluye aquí el link al contenido.' : platform === 'tiktok' ? 'Pídele que te escriba por DM. {palabra} = la palabra clave. Ej: ¡Hola {nombre}! Escríbeme {palabra} por DM 📩' : 'Ej: ¡Listo {username}! Te escribí por DM 📩')}
+    ${!isYt ? field('ask_follow_msg', 'DM: pedir que te siga', platform === 'tiktok' ? 'Se envía si escribe por DM y aún no te sigue. Pide que te siga y responda LISTO.' : 'Se envía con el botón "Ya te sigo".', 3) : ''}
     ${!isYt ? field('not_following_msg', 'DM: si todavía no te sigue', 'Se envía cuando la verificación dice que no te sigue.', 2) : ''}
     ${!isYt ? field('content_msg', 'DM: contenido prometido', 'El mensaje con el link/contenido.', 3) : ''}
     <div class="actions">

@@ -3,14 +3,13 @@ import { config } from './config.js';
 import { request } from './http.js';
 import {
   getSetting, setSetting, markSeen, logEvent, getRule, upsertSession, getPendingSession,
-  bumpAttempts, setSessionStatus,
+  bumpAttempts, setSessionStatus, listRules,
 } from './db.js';
 import { matchRule, render, isConfirmation } from './engine.js';
 
 const P = 'tiktok';
 const api = () => `https://business-api.tiktok.com/open_api/${config.tiktok.apiVersion}`;
-const SCOPES = ['user.info.basic', 'user.info.username', 'user.info.profile', 'user.account.type',
-  'message.list.read', 'message.list.send', 'message.list.manage'];
+const SCOPES = () => config.tiktok.scopes;
 
 export const redirectUri = () => `${config.baseUrl}/tiktok/callback`;
 export const webhookUrl = () => `${config.baseUrl}/webhooks/tiktok`;
@@ -39,7 +38,7 @@ export function verifySignature(rawBody, header, now = Date.now()) {
 
 export function authorizeUrl(state) {
   const q = new URLSearchParams({
-    client_key: config.tiktok.appId, response_type: 'code', scope: SCOPES.join(','),
+    client_key: config.tiktok.appId, response_type: 'code', scope: SCOPES().join(','),
     redirect_uri: redirectUri(), state,
   });
   return `https://www.tiktok.com/v2/auth/authorize?${q}`;
@@ -131,6 +130,25 @@ async function checkAndDeliver(conversationId, session, username) {
   logEvent(P, 'info', `Contenido entregado a @${username}${follows === null ? ' (seguimiento no verificable)' : ''}`);
 }
 
+const firstKeyword = (rule) => String(rule.keywords || '').split(',')[0].trim().toUpperCase();
+const userKey = (username) => `user:${String(username || '').replace(/^@/, '').toLowerCase()}`;
+
+/** DM con palabra clave (o de alguien que comentó): verifica follow y entrega o pide seguir. */
+async function startDelivery(conversationId, rule, username) {
+  upsertSession(P, conversationId, rule.id, username, 'awaiting_follow');
+  const session = getPendingSession(P, conversationId);
+  const vars = { username, nombre: username, palabra: firstKeyword(rule) };
+  const follows = username ? await followsMe(username) : null;
+  if (follows === false) {
+    await sendText(conversationId, render(rule.ask_follow_msg, vars));
+    logEvent(P, 'info', `@${username} escribió por DM pero aún no sigue la cuenta (regla #${rule.id})`);
+    return;
+  }
+  await sendText(conversationId, render(rule.content_msg, vars));
+  setSessionStatus(session.id, 'delivered');
+  logEvent(P, 'info', `Contenido entregado a @${username}${follows === null ? ' (seguimiento no verificable)' : ''} (regla #${rule.id})`);
+}
+
 export async function handleMessage(content) {
   const conversationId = content.conversation_id;
   const fromId = content.from_user?.id;
@@ -140,17 +158,87 @@ export async function handleMessage(content) {
   if (content.type !== 'text') return;
   const text = content.text?.body || '';
 
-  const rule = matchRule(P, text);
-  if (rule) {
-    upsertSession(P, conversationId, rule.id, username, 'awaiting_follow');
-    await sendText(conversationId, render(rule.ask_follow_msg, { username, nombre: username }));
-    logEvent(P, 'info', `DM de @${username} con palabra clave (regla #${rule.id})`);
+  // 1) Escribió la palabra clave
+  let rule = matchRule(P, text);
+  // 2) O es alguien que comentó la palabra en un video y ahora escribe cualquier cosa
+  if (!rule && username) {
+    const lead = getPendingSession(P, userKey(username));
+    if (lead && !getPendingSession(P, conversationId)) {
+      rule = getRule(lead.rule_id);
+      setSessionStatus(lead.id, 'delivered');
+    }
+  }
+  if (rule && rule.active) {
+    logEvent(P, 'info', `DM de @${username} (regla #${rule.id})`);
+    await startDelivery(conversationId, rule, username);
     return;
   }
+  // 3) Responde LISTO después de que se le pidió seguir
   const pending = getPendingSession(P, conversationId);
   if (pending && isConfirmation(text, config.tiktok.confirmWords)) {
     await checkAndDeliver(conversationId, pending, username || pending.username);
   }
+}
+
+// ---------- Comentarios en videos ----------
+const pick = (obj, ...keys) => { for (const k of keys) if (obj?.[k] != null && obj[k] !== '') return obj[k]; return undefined; };
+
+async function listVideos() {
+  const d = await call('/business/video/list/', {
+    query: { business_id: businessId(), fields: JSON.stringify(['item_id', 'create_time']), max_count: String(config.tiktok.videosToScan) },
+  });
+  return (d.videos || d.list || []).map((v) => String(pick(v, 'item_id', 'video_id', 'id'))).filter(Boolean);
+}
+
+async function listComments(videoId) {
+  const d = await call('/business/comment/list/', {
+    query: { business_id: businessId(), video_id: videoId, include_replies: 'false', sort_field: 'create_time', sort_order: 'desc', max_count: '50' },
+  });
+  return d.comments || d.list || [];
+}
+
+async function replyComment(videoId, commentId, text) {
+  return call('/business/comment/reply/create/', {
+    method: 'POST', body: { business_id: businessId(), video_id: videoId, comment_id: commentId, text },
+  });
+}
+
+/** Procesa comentarios de un video. Exportado para pruebas. */
+export async function processComments(videoId, comments, { initialize = false, reply = replyComment } = {}) {
+  const me = myUsername();
+  for (const c of comments) {
+    const id = String(pick(c, 'comment_id', 'id') || '');
+    if (!id) continue;
+    const isNew = markSeen(P, `comment:${id}`);
+    if (!isNew || initialize) continue;
+    const parent = pick(c, 'parent_comment_id');
+    if (parent && String(parent) !== id && String(parent) !== '0') continue; // es una respuesta
+    const username = String(pick(c, 'username', 'unique_id') || '').replace(/^@/, '');
+    if (c.owner === true || (username && username.toLowerCase() === me)) continue;
+    const rule = matchRule(P, String(c.text || ''), videoId);
+    if (!rule || !rule.public_reply) continue;
+    const name = username || String(pick(c, 'display_name') || '');
+    try {
+      await reply(videoId, id, render(rule.public_reply, { username: name, nombre: pick(c, 'display_name') || name, palabra: firstKeyword(rule) }));
+      if (username) upsertSession(P, userKey(username), rule.id, username, 'awaiting_follow');
+      logEvent(P, 'info', `Respondido comentario de @${name} en video ${videoId} (regla #${rule.id})`);
+    } catch (e) {
+      logEvent(P, 'error', `No se pudo responder el comentario ${id}: ${e.message}`);
+    }
+  }
+}
+
+export async function pollComments() {
+  if (!businessId() || !getSetting('tt_refresh_token')) return;
+  if (!listRules(P).some((r) => r.active && r.public_reply)) return;
+  const initialize = getSetting('tt_comments_initialized') !== '1';
+  const ids = new Set(await listVideos());
+  for (const r of listRules(P)) if (r.active && r.media_id) ids.add(r.media_id);
+  for (const videoId of ids) {
+    try { await processComments(videoId, await listComments(videoId), { initialize }); }
+    catch (e) { logEvent(P, 'error', `Comentarios del video ${videoId}: ${e.message}`); }
+  }
+  if (initialize) { setSetting('tt_comments_initialized', '1'); logEvent(P, 'info', 'Comentarios existentes marcados como vistos (no se responden)'); }
 }
 
 export async function handleWebhook(event) {

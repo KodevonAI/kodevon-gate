@@ -28,6 +28,11 @@ export const config = {
     apifyActor: env.APIFY_ACTOR || 'unseenuser~tiktok-followers-following-scraper',
     followCheckMax: Number(env.TIKTOK_FOLLOW_CHECK_MAX || 50),
     // palabras que cuentan como "ya te seguí"
+    // permisos OAuth (comentarios + mensajes); separados por coma
+    scopes: (env.TIKTOK_SCOPES || 'user.info.basic,user.info.username,video.list,comment.list,comment.list.manage,message.list.read,message.list.send,message.list.manage')
+      .split(',').map((s) => s.trim()).filter(Boolean),
+    pollSeconds: Number(env.TIKTOK_POLL_SECONDS || 120),
+    videosToScan: Number(env.TIKTOK_VIDEOS_TO_SCAN || 10),
     confirmWords: (env.TIKTOK_CONFIRM_WORDS || 'listo,ya,ya te sigo,hecho,done,ok')
       .split(',').map((w) => w.trim().toLowerCase()).filter(Boolean),
   },

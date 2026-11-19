@@ -13,7 +13,8 @@ export const DEFAULTS = {
     not_following_msg: 'Todavía no veo que me sigas 👀 Sígueme y vuelve a tocar el botón.',
   },
   tiktok: {
-    ask_follow_msg: '¡Hola {nombre}! Sígueme y respóndeme LISTO para enviarte el contenido.',
+    public_reply: '¡Hola {nombre}! 📩 Escríbeme {palabra} por mensaje directo y te lo envío.',
+    ask_follow_msg: '¡Hola {nombre}! Para enviarte el contenido primero sígueme y luego respóndeme LISTO 🙌',
     not_following_msg: 'Aún no veo que me sigas 👀 Sígueme y escribe LISTO de nuevo.',
   },
   youtube: {},
@@ -22,7 +23,7 @@ export const DEFAULTS = {
 /** Campos obligatorios por plataforma (después de aplicar defaults). */
 export const REQUIRED = {
   instagram: ['keywords', 'ask_follow_msg', 'content_msg'],
-  tiktok: ['keywords', 'ask_follow_msg', 'content_msg'],
+  tiktok: ['keywords', 'public_reply', 'ask_follow_msg', 'content_msg'],
   youtube: ['keywords', 'public_reply'],
 };
 
@@ -45,7 +46,8 @@ export async function resolveMedia(platform, value) {
     const m = v.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([\w-]{11})/);
     return m ? m[1] : v;
   }
-  return v; // TikTok: las reglas son por DM, el video es solo referencia
+  const m = v.match(/\/video\/(\d+)/) || v.match(/^(\d{10,})$/); // TikTok
+  return m ? m[1] : v;
 }
 
 /**

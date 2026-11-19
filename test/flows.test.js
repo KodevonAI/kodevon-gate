@@ -115,7 +115,7 @@ test('TikTok: firma', () => {
   assert.ok(!tt.verifySignature(body, `t=${t},s=abc`));
 });
 
-test('TikTok: palabra clave → pedir follow; LISTO → verifica con Apify → contenido', async () => {
+test('TikTok: DM con palabra clave → verifica con Apify; no sigue → pedir follow; LISTO → contenido', async () => {
   saveRule({ platform: 'tiktok', keywords: 'guia', ask_follow_msg: 'Sígueme y escribe LISTO', not_following_msg: 'Aún no', content_msg: 'Toma: link', active: true });
   let following = [{ list_type: 'following', unique_id: 'otro' }];
   mockFetch((url) => {
@@ -126,8 +126,10 @@ test('TikTok: palabra clave → pedir follow; LISTO → verifica con Apify → c
   const ev = (id, body) => ({ event: 'im_receive_msg', user_openid: 'biz', content: JSON.stringify({ conversation_id: 'conv1', message_id: id, type: 'text', text: { body }, from: 'pepe', from_user: { id: 'u9' }, to_user: { id: 'biz' } }) });
   await tt.handleWebhook(ev('1', 'Quiero la GUIA'));
   assert.equal(calls.at(-1).body.text.body, 'Sígueme y escribe LISTO');
+  assert.deepEqual(calls.at(-2).body.handles, ['pepe']); // verificó antes de pedir follow
+  const n = calls.length;
   await tt.handleWebhook(ev('2', 'hola'));
-  assert.equal(calls.length, 1); // texto cualquiera no dispara
+  assert.equal(calls.length, n); // texto cualquiera no dispara
   await tt.handleWebhook(ev('3', 'listo'));
   assert.equal(calls.at(-1).body.text.body, 'Aún no');
   assert.deepEqual(calls.at(-2).body.handles, ['pepe']);
@@ -143,6 +145,33 @@ test('TikTok: lista privada → se entrega igual', async () => {
   await tt.handleWebhook(ev('1', 'guia'));
   await tt.handleWebhook(ev('2', 'listo'));
   assert.equal(calls.at(-1).body.text.body, 'Toma');
+});
+
+test('TikTok: comentario → responde pidiendo DM; DM cualquiera de esa persona → verifica y entrega', async () => {
+  saveRule({ platform: 'tiktok', keywords: 'claude', public_reply: 'Hola {nombre}, escríbeme {palabra} por DM', ask_follow_msg: 'Sígueme y escribe LISTO', content_msg: 'Toma: link', active: true });
+  const replies = [];
+  const reply = async (v, c, text) => replies.push([v, c, text]);
+  const cm = (id, text, extra = {}) => ({ comment_id: id, text, username: 'ana', display_name: 'Ana', ...extra });
+  await tt.processComments('V1', [cm('c0', 'claude')], { initialize: true, reply });
+  assert.equal(replies.length, 0); // primera pasada: solo marca como vistos
+  await tt.processComments('V1', [cm('c0', 'claude'), cm('c1', 'quiero CLAUDE'), cm('c2', 'claude', { owner: true }), cm('c3', 'claude', { parent_comment_id: 'c1' }), cm('c4', 'genial')], { reply });
+  assert.deepEqual(replies, [['V1', 'c1', 'Hola Ana, escríbeme CLAUDE por DM']]);
+
+  mockFetch((url) => {
+    if (url.includes('api.apify.com')) return [{ list_type: 'following', unique_id: 'kodevon' }];
+    return { code: 0, data: { message: { message_id: 'x' } } };
+  });
+  await tt.handleWebhook({ event: 'im_receive_msg', content: { conversation_id: 'cv', message_id: 'm1', type: 'text', text: { body: 'hola!' }, from: 'ana', from_user: { id: 'u1' } } });
+  assert.equal(calls.at(-1).body.text.body, 'Toma: link');
+  // un segundo DM cualquiera ya no vuelve a entregar
+  const n = calls.length;
+  await tt.handleWebhook({ event: 'im_receive_msg', content: { conversation_id: 'cv', message_id: 'm2', type: 'text', text: { body: 'gracias' }, from: 'ana', from_user: { id: 'u1' } } });
+  assert.equal(calls.length, n);
+});
+
+test('TikTok: link del video → ID', async () => {
+  const { resolveMedia } = await import('../src/rules.js');
+  assert.equal(await resolveMedia('tiktok', 'https://www.tiktok.com/@kodevon/video/7441234567890123456?is_from_webapp=1'), '7441234567890123456');
 });
 
 test('YouTube: primera pasada no responde; luego responde con link y omite mis comentarios', async () => {
