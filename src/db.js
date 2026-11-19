@@ -70,6 +70,11 @@ export function markSeen(platform, itemId) {
   return r.changes === 1;
 }
 
+/** Permite reintentar un evento cuyo procesamiento no terminó correctamente. */
+export function unmarkSeen(platform, itemId) {
+  getDb().prepare('DELETE FROM seen WHERE platform = ? AND item_id = ?').run(platform, String(itemId));
+}
+
 export function logEvent(platform, level, message) {
   const line = `[${platform}] ${level.toUpperCase()}: ${message}`;
   if (level === 'error') console.error(line); else console.log(line);

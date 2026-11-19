@@ -3,7 +3,7 @@ import { config } from './config.js';
 import { request } from './http.js';
 import {
   getSetting, setSetting, markSeen, logEvent, getRule, upsertSession, getPendingSession,
-  bumpAttempts, setSessionStatus,
+  bumpAttempts, setSessionStatus, unmarkSeen,
 } from './db.js';
 import { matchRule, render } from './engine.js';
 
@@ -170,11 +170,20 @@ async function checkAndDeliver(igsid, session) {
     res = await isFollower(igsid);
   } catch (e) {
     logEvent(P, 'error', `No se pudo verificar seguidor: ${e.message}`);
+    const msg = 'Recibí tu confirmación, pero Instagram no me dejó verificar el seguimiento en este momento. Vuelve a tocar «Ya te sigo» en unos segundos y lo intento de nuevo.';
+    await sendWithButton({ id: igsid }, msg, rule.id);
     return;
   }
   const vars = { username: res.username || session.username, nombre: res.username || session.username };
   if (res.follows) {
-    await sendMessage({ id: igsid }, { text: render(rule.content_msg, vars) });
+    try {
+      await sendMessage({ id: igsid }, { text: render(rule.content_msg, vars) });
+    } catch (e) {
+      logEvent(P, 'error', `No se pudo enviar el contenido de la regla #${rule.id}: ${e.message}`);
+      const msg = 'Confirmé que sigues la cuenta, pero Instagram no pudo entregar el contenido ahora. Toca «Ya te sigo» de nuevo en unos segundos y volveré a enviarlo.';
+      await sendWithButton({ id: igsid }, msg, rule.id);
+      return;
+    }
     setSessionStatus(session.id, 'delivered');
     logEvent(P, 'info', `Contenido entregado a @${vars.username} (regla #${rule.id})`);
   } else {
@@ -191,29 +200,35 @@ export async function handleMessaging(m) {
   const mid = m.message?.mid || (m.postback ? `pb:${m.postback.mid || ''}:${m.timestamp}` : null);
   if (mid && !markSeen(P, `msg:${mid}`)) return;
 
-  const payload = m.message?.quick_reply?.payload || m.postback?.payload || '';
-  const text = m.message?.text || '';
+  try {
+    const payload = m.message?.quick_reply?.payload || m.postback?.payload || '';
+    const text = m.message?.text || '';
 
-  if (payload.startsWith(PAYLOAD_PREFIX)) {
-    const ruleId = Number(payload.slice(PAYLOAD_PREFIX.length));
-    upsertSession(P, sender, ruleId, '', 'awaiting_follow');
-    const s = getPendingSession(P, sender);
-    if (s) await checkAndDeliver(sender, s);
-    return;
+    if (payload.startsWith(PAYLOAD_PREFIX)) {
+      const ruleId = Number(payload.slice(PAYLOAD_PREFIX.length));
+      upsertSession(P, sender, ruleId, '', 'awaiting_follow');
+      const s = getPendingSession(P, sender);
+      if (s) await checkAndDeliver(sender, s);
+      return;
+    }
+
+    // ¿Escribió la palabra clave por DM?
+    const rule = text ? matchRule(P, text) : null;
+    if (rule) {
+      upsertSession(P, sender, rule.id, '', 'awaiting_follow');
+      await sendWithButton({ id: sender }, render(rule.ask_follow_msg, {}), rule.id);
+      logEvent(P, 'info', `DM con palabra clave (regla #${rule.id})`);
+      return;
+    }
+
+    // Cualquier respuesta con una sesión pendiente = volver a verificar
+    const pending = getPendingSession(P, sender);
+    if (pending) await checkAndDeliver(sender, pending);
+  } catch (e) {
+    // Do not permanently consume the inbound event when a downstream send fails.
+    if (mid) unmarkSeen(P, `msg:${mid}`);
+    throw e;
   }
-
-  // ¿Escribió la palabra clave por DM?
-  const rule = text ? matchRule(P, text) : null;
-  if (rule) {
-    upsertSession(P, sender, rule.id, '', 'awaiting_follow');
-    await sendWithButton({ id: sender }, render(rule.ask_follow_msg, {}), rule.id);
-    logEvent(P, 'info', `DM con palabra clave (regla #${rule.id})`);
-    return;
-  }
-
-  // Cualquier respuesta con una sesión pendiente = volver a verificar
-  const pending = getPendingSession(P, sender);
-  if (pending) await checkAndDeliver(sender, pending);
 }
 
 export async function handleWebhook(body) {

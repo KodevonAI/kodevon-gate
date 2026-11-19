@@ -108,6 +108,61 @@ test('IG: si el botón es rechazado, reenvía solo texto', async () => {
   assert.equal(n, 2);
 });
 
+test('IG: si falla la verificación, avisa y permite reintentar hasta entregar el contenido', async () => {
+  const ruleId = igRule();
+  let checks = 0;
+  mockFetch((url, body) => {
+    if (url.endsWith('/999/messages')) return { recipient_id: 'IGSID1', message_id: 'sent' };
+    if (url.includes('/IGSID1?fields=')) {
+      checks++;
+      if (checks === 1) return { __status: 503, body: { error: { message: 'temporarily unavailable' } } };
+      return { username: 'ana', is_user_follow_business: true };
+    }
+    return {};
+  });
+  await ig.handleComment({ id: 'c4', text: 'guia', from: { id: 'u4', username: 'ana' } });
+  const tap = (mid) => ({ object: 'instagram', entry: [{ id: '999', messaging: [{
+    sender: { id: 'IGSID1' }, recipient: { id: '999' },
+    message: { mid, text: '✅ Ya te sigo', quick_reply: { payload: `FOLLOW_CHECK:${ruleId}` } },
+  }] }] });
+
+  await ig.handleWebhook(tap('retry-1'));
+  assert.match(calls.at(-1).body.message.text, /no me dejó verificar/);
+  assert.equal(calls.at(-1).body.message.quick_replies[0].payload, `FOLLOW_CHECK:${ruleId}`);
+
+  await ig.handleWebhook(tap('retry-2'));
+  assert.equal(calls.at(-1).body.message.text, 'Aquí está: https://x.co');
+  assert.equal(getDb().prepare('SELECT status FROM sessions').get().status, 'delivered');
+});
+
+test('IG: si falla el envío del contenido después de confirmar el follow, ofrece reintentar', async () => {
+  const ruleId = igRule();
+  let sends = 0;
+  mockFetch((url, body) => {
+    if (url.includes('/IGSID1?fields=')) return { username: 'ana', is_user_follow_business: true };
+    if (url.endsWith('/999/messages')) {
+      sends++;
+      if (sends === 2) return { __status: 503, body: { error: { message: 'temporarily unavailable' } } };
+      return { recipient_id: 'IGSID1', message_id: `sent-${sends}` };
+    }
+    return {};
+  });
+  await ig.handleComment({ id: 'c5', text: 'guia', from: { id: 'u5', username: 'ana' } });
+  const tap = (mid) => ({ object: 'instagram', entry: [{ id: '999', messaging: [{
+    sender: { id: 'IGSID1' }, recipient: { id: '999' },
+    message: { mid, text: '✅ Ya te sigo', quick_reply: { payload: `FOLLOW_CHECK:${ruleId}` } },
+  }] }] });
+
+  await ig.handleWebhook(tap('content-retry-1'));
+  assert.match(calls.at(-1).body.message.text, /Confirmé que sigues/);
+  assert.equal(calls.at(-1).body.message.quick_replies[0].payload, `FOLLOW_CHECK:${ruleId}`);
+  assert.equal(getDb().prepare('SELECT status FROM sessions').get().status, 'awaiting_follow');
+
+  await ig.handleWebhook(tap('content-retry-2'));
+  assert.equal(calls.at(-1).body.message.text, 'Aquí está: https://x.co');
+  assert.equal(getDb().prepare('SELECT status FROM sessions').get().status, 'delivered');
+});
+
 test('TikTok: firma', () => {
   const body = '{"x":1}'; const t = Math.floor(Date.now() / 1000);
   const s = crypto.createHmac('sha256', 'ttsecret').update(`${t}.${body}`).digest('hex');
