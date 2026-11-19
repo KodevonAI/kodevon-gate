@@ -110,3 +110,10 @@ test('API: status', async () => {
   assert.equal(s.instagram.connected, true);
   assert.equal(s.youtube.connected, false);
 });
+
+test('API: Facebook subscribe y selftest exigen conexión y clave', async () => {
+  assert.equal((await fetch(`${base}/facebook/selftest`, { method: 'POST' })).status, 401);
+  const r = await call('POST', '/facebook/selftest');
+  assert.equal(r.status, 500);
+  assert.match((await r.json()).error, /no está conectado/);
+});

@@ -86,6 +86,8 @@ export function createApiRouter() {
       'DELETE /api/v1/rules/:id': 'Eliminar regla',
       'GET|POST /api/v1/{instagram|tiktok|youtube|facebook}/rules': 'Igual que /rules pero fijando la plataforma',
       'GET|PATCH|DELETE /api/v1/{plataforma}/rules/:id': 'Igual que /rules/:id',
+      'POST /api/v1/facebook/subscribe': 'Suscribe la página a los webhooks (feed, messages)',
+      'POST /api/v1/facebook/selftest': 'Prueba cada permiso de página (crea y borra un comentario de prueba)',
     },
     example: {
       platform: 'instagram',
@@ -105,6 +107,9 @@ export function createApiRouter() {
     facebook: { connected: fb.isConnected(), page: getSetting('fb_page_name') || null, page_id: fb.pageId() || null },
     rules: Object.fromEntries(PLATFORMS.map((p) => [p, listRules(p).length])),
   }));
+
+  api.post('/facebook/subscribe', wrap(async (_req, res) => res.json({ ok: true, result: await fb.subscribeWebhooks() })));
+  api.post('/facebook/selftest', wrap(async (_req, res) => res.json(await fb.selfTest())));
 
   // Rutas genéricas (/rules) y por plataforma (/:platform/rules)
   for (const prefix of ['', '/:platform']) {

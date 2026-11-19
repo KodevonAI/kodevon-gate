@@ -170,3 +170,34 @@ export async function handleWebhook(body) {
     for (const m of entry.messaging || []) await handleMessaging(m);
   }
 }
+
+/**
+ * Llama una vez a cada permiso que usa Gate (Meta exige al menos una llamada correcta antes de la revisión).
+ * pages_manage_engagement: crea un comentario en la última publicación de la página y lo borra al instante.
+ */
+export async function selfTest() {
+  if (!isConnected()) throw new Error('Facebook no está conectado');
+  const t = encodeURIComponent(pageToken());
+  const id = pageId();
+  const out = {};
+  const run = async (perm, fn) => {
+    try { out[perm] = { ok: true, detail: await fn() }; } catch (e) { out[perm] = { ok: false, error: e.message.slice(0, 300) }; }
+  };
+  await run('pages_read_engagement', async () => (await request(`${api()}/${id}?fields=name,followers_count&access_token=${t}`)).name);
+  let lastPost = '';
+  await run('pages_read_user_content', async () => {
+    const r = await request(`${api()}/${id}/feed?fields=id,comments.limit(1){id}&limit=1&access_token=${t}`);
+    lastPost = r.data?.[0]?.id || '';
+    return `${(r.data || []).length} publicación(es) leída(s)`;
+  });
+  await run('pages_manage_metadata', async () => (await request(`${api()}/${id}/subscribed_apps?access_token=${t}`)).data?.length ?? 0);
+  await run('pages_messaging', async () => `${((await request(`${api()}/${id}/conversations?platform=messenger&limit=1&access_token=${t}`)).data || []).length} conversación(es)`);
+  await run('pages_manage_engagement', async () => {
+    if (!lastPost) throw new Error('La página no tiene publicaciones donde probar');
+    const c = await request(`${api()}/${lastPost}/comments`, { method: 'POST', headers: { Authorization: `Bearer ${pageToken()}` }, body: { message: 'Prueba de Kodevon Gate (se borra sola)' } });
+    await request(`${api()}/${c.id}?access_token=${t}`, { method: 'DELETE' });
+    return `comentario ${c.id} creado y borrado`;
+  });
+  logEvent(P, 'info', `Prueba de permisos: ${Object.entries(out).map(([k, v]) => `${k} ${v.ok ? 'OK' : 'ERROR'}`).join(', ')}`);
+  return out;
+}
