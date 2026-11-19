@@ -67,7 +67,10 @@ test('API: validaciones', async () => {
   const bad = await call('POST', '/rules', '{mal json');
   assert.equal(bad.status, 400);
   assert.equal((await bad.json()).error, 'JSON inválido');
-  assert.equal((await call('GET', '/facebook/rules')).status, 404);
+  assert.equal((await call('GET', '/twitter/rules')).status, 404);
+  const fbBad = await call('POST', '/facebook/rules', { keywords: 'a' });
+  assert.equal(fbBad.status, 400);
+  assert.match((await fbBad.json()).error, /content_msg/);
 });
 
 test('API: YouTube extrae ID del link y TikTok usa defaults', async () => {

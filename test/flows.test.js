@@ -325,3 +325,77 @@ test('IG: resuelve link de reel a ID numérico', async () => {
   assert.equal(await ig.resolveMediaId('123'), '123');
   await assert.rejects(ig.resolveMediaId('ZZZ'));
 });
+
+// ---------- Facebook ----------
+const fbMod = await import('../src/facebook.js');
+
+const fbSetup = () => {
+  setSetting('fb_page_id', '555');
+  setSetting('fb_page_token', 'ptok');
+  return saveRule({
+    platform: 'facebook', keywords: 'NOVEDADES', media_id: '777', active: true,
+    public_reply: '¡Listo {nombre}! Te escribí por Messenger', content_msg: 'Aquí van {nombre}: https://x.co',
+  });
+};
+const fbComment = (over = {}) => ({
+  object: 'page',
+  entry: [{ id: '555', changes: [{ field: 'feed', value: {
+    item: 'comment', verb: 'add', comment_id: '777_c1', post_id: '555_777', parent_id: '555_777',
+    message: 'quiero las novedades!', from: { id: 'u1', name: 'Ana Pérez' }, ...over,
+  } }] }],
+});
+
+test('FB: comentario con palabra en el post → respuesta pública + private reply por Messenger', async () => {
+  fbSetup();
+  mockFetch(() => ({ recipient_id: 'psid1' }));
+  await fbMod.handleWebhook(fbComment());
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].url, /graph\.facebook\.com\/v[\d.]+\/777_c1\/comments$/);
+  assert.equal(calls[0].body.message, '¡Listo Ana! Te escribí por Messenger');
+  assert.match(calls[1].url, /\/555\/messages$/);
+  assert.deepEqual(calls[1].body.recipient, { comment_id: '777_c1' });
+  assert.equal(calls[1].body.message.text, 'Aquí van Ana: https://x.co');
+  // el mismo comentario repetido no vuelve a disparar
+  await fbMod.handleWebhook(fbComment());
+  assert.equal(calls.length, 2);
+});
+
+test('FB: ignora otro post, respuestas a comentarios y mis propios comentarios', async () => {
+  fbSetup();
+  mockFetch((url) => (url.includes('attachments') ? { attachments: { data: [{ target: { id: '888' } }] } } : {}));
+  await fbMod.handleWebhook(fbComment({ comment_id: 'x1', post_id: '555_999', parent_id: '555_999' }));
+  await fbMod.handleWebhook(fbComment({ comment_id: 'x2', parent_id: '777_c0' }));
+  await fbMod.handleWebhook(fbComment({ comment_id: 'x3', from: { id: '555', name: 'Kodevon' } }));
+  assert.ok(calls.every((c) => !/comments$|messages$/.test(c.url)));
+});
+
+test('FB: regla con ID de video casa con el post vía attachments', async () => {
+  fbSetup();
+  mockFetch((url) => (url.includes('attachments') ? { attachments: { data: [{ target: { id: '777' } }] } } : {}));
+  await fbMod.handleWebhook(fbComment({ comment_id: 'v1', post_id: '555_123', parent_id: '555_123' }));
+  assert.ok(calls.some((c) => c.url.endsWith('/v1/comments')));
+  assert.ok(calls.some((c) => c.url.endsWith('/555/messages')));
+});
+
+test('FB: palabra por Messenger → contenido', async () => {
+  fbSetup();
+  saveRule({ platform: 'facebook', keywords: 'guia', active: true, content_msg: 'Guía: https://g.co' });
+  mockFetch(() => ({}));
+  await fbMod.handleWebhook({ object: 'page', entry: [{ messaging: [{ sender: { id: 'u9' }, message: { mid: 'm1', text: 'GUÍA' } }] }] });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].body.recipient, { id: 'u9' });
+  assert.equal(calls[0].body.message.text, 'Guía: https://g.co');
+});
+
+test('FB: link de reel → ID del post; sin conexión propia reutiliza la página de IG (EAA)', async () => {
+  setSetting('fb_page_id', '555');
+  setSetting('fb_page_token', 'ptok');
+  mockFetch(() => ({ post_id: '555_4242' }));
+  assert.equal(await fbMod.resolveMediaId('https://www.facebook.com/reel/1234567890'), '4242');
+  openDb(':memory:');
+  setSetting('ig_access_token', 'EAAxyz');
+  setSetting('ig_page_id', '321');
+  setSetting('ig_page_token', 'igpage');
+  assert.equal(fbMod.pageId(), '321');
+  assert.equal(fbMod.pageToken(), 'igpage');
+});

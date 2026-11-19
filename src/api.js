@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { config } from './config.js';
 import { getSetting, setSetting, listRules, getRule, saveRule, deleteRule, logEvent } from './db.js';
+import * as fb from './facebook.js';
 import { PLATFORMS, DEFAULTS, REQUIRED, RuleError, buildRule, serializeRule } from './rules.js';
 
 /** Clave activa: API_KEY del entorno o la generada/guardada en la BD. */
@@ -83,7 +84,7 @@ export function createApiRouter() {
       'GET /api/v1/rules/:id': 'Ver regla',
       'PATCH /api/v1/rules/:id': 'Editar campos de una regla',
       'DELETE /api/v1/rules/:id': 'Eliminar regla',
-      'GET|POST /api/v1/{instagram|tiktok|youtube}/rules': 'Igual que /rules pero fijando la plataforma',
+      'GET|POST /api/v1/{instagram|tiktok|youtube|facebook}/rules': 'Igual que /rules pero fijando la plataforma',
       'GET|PATCH|DELETE /api/v1/{plataforma}/rules/:id': 'Igual que /rules/:id',
     },
     example: {
@@ -101,6 +102,7 @@ export function createApiRouter() {
     instagram: { connected: Boolean(getSetting('ig_user_id')), username: getSetting('ig_username') || null },
     tiktok: { connected: Boolean(getSetting('tt_access_token')), username: config.tiktok.username || null, follow_check: Boolean(config.tiktok.apifyToken) },
     youtube: { connected: Boolean(getSetting('yt_refresh_token')) },
+    facebook: { connected: fb.isConnected(), page: getSetting('fb_page_name') || null, page_id: fb.pageId() || null },
     rules: Object.fromEntries(PLATFORMS.map((p) => [p, listRules(p).length])),
   }));
 

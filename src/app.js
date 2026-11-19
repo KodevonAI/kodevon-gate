@@ -5,6 +5,7 @@ import { getSetting, setSetting, saveRule, deleteRule, getRule, logEvent } from 
 import * as ig from './instagram.js';
 import * as tt from './tiktok.js';
 import * as yt from './youtube.js';
+import * as fb from './facebook.js';
 import { renderAdmin } from './admin.js';
 import { createApiRouter, rotateApiKey } from './api.js';
 import { buildRule, RuleError } from './rules.js';
@@ -45,12 +46,12 @@ export function createApp() {
 <style>body{font:16px/1.6 Inter,system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 20px;color:#1A1A1A}h1{font-family:Outfit,Inter,sans-serif}h1 b{color:#FF5F1F}</style></head>
 <body><h1><b>Kodevon</b> · ${title}</h1>${body}<p style="color:#8C8C8C">Kodevon S.A.S · Popayán, Colombia · <a href="mailto:ventas@kodevon.com">ventas@kodevon.com</a></p></body></html>`;
   app.get('/privacidad', (_req, res) => res.send(legal('Política de privacidad', `
-<p>Este servicio automatiza respuestas a comentarios y mensajes directos de las cuentas oficiales de Kodevon en Instagram, TikTok y YouTube.</p>
+<p>Este servicio automatiza respuestas a comentarios y mensajes directos de las cuentas oficiales de Kodevon en Instagram, Facebook, TikTok y YouTube.</p>
 <p><b>Datos que tratamos:</b> identificador de la conversación o del usuario en la plataforma, nombre de usuario, texto del comentario o mensaje y si la persona sigue nuestra cuenta. Solo se usan para responder y entregar el contenido solicitado.</p>
 <p><b>No vendemos ni compartimos</b> estos datos con terceros. Se almacenan en nuestro propio servidor y se conservan solo el tiempo necesario para operar el servicio.</p>
 <p>Puedes solicitar la eliminación de tus datos en <a href="/eliminar-datos">/eliminar-datos</a>.</p>`)));
   app.get('/eliminar-datos', (_req, res) => res.send(legal('Eliminación de datos', `
-<p>Para eliminar los datos asociados a tus interacciones con nuestras cuentas, escribe a <a href="mailto:ventas@kodevon.com?subject=Eliminar%20mis%20datos">ventas@kodevon.com</a> con el asunto <b>"Eliminar mis datos"</b> e indica tu nombre de usuario de Instagram, TikTok o YouTube.</p>
+<p>Para eliminar los datos asociados a tus interacciones con nuestras cuentas, escribe a <a href="mailto:ventas@kodevon.com?subject=Eliminar%20mis%20datos">ventas@kodevon.com</a> con el asunto <b>"Eliminar mis datos"</b> e indica tu nombre de usuario de Instagram, Facebook, TikTok o YouTube.</p>
 <p>Eliminaremos tus datos en un plazo máximo de 15 días hábiles y te confirmaremos por correo.</p>`)));
   app.get('/terminos', (_req, res) => res.send(legal('Términos del servicio', `
 <p>Al comentar o escribir una palabra clave a nuestras cuentas aceptas recibir una respuesta automática con el contenido solicitado. El servicio es gratuito y puede cambiar o suspenderse en cualquier momento.</p>`)));
@@ -65,7 +66,22 @@ export function createApp() {
   app.post('/webhooks/instagram', (req, res) => {
     if (!ig.verifySignature(req.rawBody || '', req.get('x-hub-signature-256'))) return res.sendStatus(401);
     res.sendStatus(200);
-    runAsync('instagram', () => ig.handleWebhook(req.body));
+    // Si la app de Meta manda aquí también los eventos de la página (object "page"), van a Facebook.
+    if (req.body?.object === 'page') runAsync('facebook', () => fb.handleWebhook(req.body));
+    else runAsync('instagram', () => ig.handleWebhook(req.body));
+  });
+
+  // ---------- Facebook (página) ----------
+  app.get('/webhooks/facebook', (req, res) => {
+    if (req.query['hub.mode'] === 'subscribe' && config.instagram.verifyToken && req.query['hub.verify_token'] === config.instagram.verifyToken) {
+      return res.status(200).send(String(req.query['hub.challenge'] || ''));
+    }
+    res.sendStatus(403);
+  });
+  app.post('/webhooks/facebook', (req, res) => {
+    if (!ig.verifySignature(req.rawBody || '', req.get('x-hub-signature-256'))) return res.sendStatus(401);
+    res.sendStatus(200);
+    runAsync('facebook', () => fb.handleWebhook(req.body));
   });
 
   // ---------- TikTok ----------
@@ -131,6 +147,16 @@ export function createApp() {
   });
   admin.post('/instagram/subscribe', async (_req, res) => {
     try { if (!getSetting('ig_user_id')) await ig.loadAccount(); await ig.subscribeWebhooks(); res.redirect('/admin?tab=conexiones&ok=Webhooks+de+Instagram+activados'); }
+    catch (e) { res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Error: ${e.message}`)}`); }
+  });
+  admin.post('/facebook/token', async (req, res) => {
+    const t = String(req.body.token || '').trim();
+    if (!t) return res.redirect('/admin?tab=conexiones');
+    try { const pg = await fb.connect(t, String(req.body.page || '')); res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Facebook conectado: ${pg.name}`)}`); }
+    catch (e) { res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Token inválido: ${e.message}`)}`); }
+  });
+  admin.post('/facebook/subscribe', async (_req, res) => {
+    try { await fb.subscribeWebhooks(); res.redirect('/admin?tab=conexiones&ok=Webhooks+de+Facebook+activados'); }
     catch (e) { res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`Error: ${e.message}`)}`); }
   });
   admin.get('/tiktok/connect', (_req, res) => {

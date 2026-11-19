@@ -1,15 +1,18 @@
 import { config } from './config.js';
 import { getSetting, listRules, getDb } from './db.js';
 import { apiKey } from './api.js';
+import * as fb from './facebook.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const PLATFORM_LABEL = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube' };
+const PLATFORM_LABEL = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', facebook: 'Facebook' };
+const ALL = ['instagram', 'facebook', 'tiktok', 'youtube'];
 
 const HELP = {
   instagram: 'Comentario con palabra clave → respuesta pública → DM pidiendo seguir con botón "Ya te sigo" → se verifica el follow → se envía el contenido. También funciona si la persona escribe la palabra por DM.',
   tiktok: 'Comentario con palabra clave → se responde el comentario pidiéndole que te escriba por DM → cuando escribe (la palabra o cualquier cosa) se verifica si te sigue → si te sigue recibe el contenido; si no, se le pide seguirte y responder LISTO. Si su lista de seguidos es privada, se entrega igual. Escribir la palabra directo por DM también funciona.',
   youtube: 'Comentario con palabra clave → se responde el comentario con el texto de "Respuesta pública" (pon ahí el link). YouTube no tiene DMs.',
+  facebook: 'Comentario con palabra clave en la página → respuesta pública → el contenido llega directo por Messenger (Meta no deja verificar si alguien sigue la página). También si escriben la palabra por Messenger.',
 };
 
 function status() {
@@ -17,11 +20,14 @@ function status() {
     instagram: getSetting('ig_user_id') ? `Conectado: @${getSetting('ig_username')}` : 'Sin conectar',
     tiktok: getSetting('tt_business_id') ? `Conectado: @${getSetting('tt_username') || config.tiktok.username}` : 'Sin conectar',
     youtube: getSetting('yt_channel_id') ? `Conectado: ${getSetting('yt_channel_title')}` : 'Sin conectar',
+    facebook: fb.isConnected() ? `Conectado: ${getSetting('fb_page_name') || (getSetting('fb_page_id') ? fb.pageId() : 'página de Instagram')}` : 'Sin conectar',
   };
 }
 
 function ruleForm(platform, r = {}) {
   const isYt = platform === 'youtube';
+  const isFb = platform === 'facebook';
+  const isPost = platform === 'instagram' || isFb;
   const field = (name, label, hint, rows = 2) => `<label>${label}<small>${hint}</small>
     <textarea name="${name}" rows="${rows}">${esc(r[name])}</textarea></label>`;
   return `<form method="post" action="/admin/rules" class="rule">
@@ -30,12 +36,12 @@ function ruleForm(platform, r = {}) {
     <div class="row">
       <label>Nombre<input name="name" value="${esc(r.name)}" placeholder="Ej: Guía de automatización"></label>
       <label>Palabras clave<small>Separadas por coma. No importan mayúsculas ni tildes.</small><input name="keywords" required value="${esc(r.keywords)}" placeholder="GUIA, CALCULO"></label>
-      <label>Link o ID del ${platform === 'instagram' ? 'post' : 'video'} (opcional)<small>Pega el link del ${platform === 'instagram' ? 'post/reel' : 'video'}. Vacío = aplica a todos</small><input name="media_id" value="${esc(r.media_id)}"></label>
+      <label>Link o ID del ${isPost ? 'post' : 'video'} (opcional)<small>Pega el link del ${isPost ? 'post/reel' : 'video'}. Vacío = aplica a todos</small><input name="media_id" value="${esc(r.media_id)}"></label>
     </div>
     ${field('public_reply', 'Respuesta pública al comentario', isYt ? 'Incluye aquí el link al contenido.' : platform === 'tiktok' ? 'Pídele que te escriba por DM. {palabra} = la palabra clave. Ej: ¡Hola {nombre}! Escríbeme {palabra} por DM 📩' : 'Ej: ¡Listo {username}! Te escribí por DM 📩')}
-    ${!isYt ? field('ask_follow_msg', 'DM: pedir que te siga', platform === 'tiktok' ? 'Se envía si escribe por DM y aún no te sigue. Pide que te siga y responda LISTO.' : 'Se envía con el botón "Ya te sigo".', 3) : ''}
-    ${!isYt ? field('not_following_msg', 'DM: si todavía no te sigue', 'Se envía cuando la verificación dice que no te sigue.', 2) : ''}
-    ${!isYt ? field('content_msg', 'DM: contenido prometido', 'El mensaje con el link/contenido.', 3) : ''}
+    ${!isYt && !isFb ? field('ask_follow_msg', 'DM: pedir que te siga', platform === 'tiktok' ? 'Se envía si escribe por DM y aún no te sigue. Pide que te siga y responda LISTO.' : 'Se envía con el botón "Ya te sigo".', 3) : ''}
+    ${!isYt && !isFb ? field('not_following_msg', 'DM: si todavía no te sigue', 'Se envía cuando la verificación dice que no te sigue.', 2) : ''}
+    ${!isYt ? field('content_msg', isFb ? 'Messenger: contenido prometido' : 'DM: contenido prometido', 'El mensaje con el link/contenido.', 3) : ''}
     <div class="actions">
       <label class="check"><input type="checkbox" name="active" ${r.id ? (r.active ? 'checked' : '') : 'checked'}> Activa</label>
       <button>${r.id ? 'Guardar' : 'Crear regla'}</button>
@@ -71,6 +77,8 @@ function setupSection() {
     <tr><td>Meta · Callback URL del webhook</td><td>${copy(`${b}/webhooks/instagram`)}</td></tr>
     <tr><td>Meta · Verify token</td><td>${config.instagram.verifyToken ? copy(esc(config.instagram.verifyToken)) : '<span class="no">define IG_VERIFY_TOKEN</span>'}</td></tr>
     <tr><td>Meta · Campos a suscribir</td><td>${copy('comments')} ${copy('messages')} ${copy('messaging_postbacks')}</td></tr>
+    <tr><td>Meta (Página) · Callback URL</td><td>${copy(`${b}/webhooks/facebook`)}</td></tr>
+    <tr><td>Meta (Página) · Campos a suscribir</td><td>${copy('feed')} ${copy('messages')}</td></tr>
     <tr><td>TikTok · Redirect URI</td><td>${copy(`${b}/tiktok/callback`)}</td></tr>
     <tr><td>Google · Redirect URI autorizado</td><td>${copy(`${b}/youtube/callback`)}</td></tr>
     <tr><td>Google · Scope</td><td>${copy('https://www.googleapis.com/auth/youtube.force-ssl')}</td></tr>
@@ -95,6 +103,14 @@ function connectBlock(p) {
         <button>Guardar token</button></form>
       <form method="post" action="/admin/instagram/subscribe" class="inline"><button class="sec">Activar webhooks de la cuenta</button></form>`;
   }
+  if (p === 'facebook') {
+    return `<form method="post" action="/admin/facebook/token" class="inline">
+        <input name="token" placeholder="Token de usuario del sistema / de la página (EAA...)" autocomplete="off">
+        <input name="page" placeholder="Nombre de la página (opcional)" style="max-width:220px">
+        <button>Guardar token</button></form>
+      <form method="post" action="/admin/facebook/subscribe" class="inline"><button class="sec">Activar webhooks de la página</button></form>
+      <p class="muted">Permisos: <code>pages_manage_engagement</code> <code>pages_read_engagement</code> <code>pages_messaging</code> <code>pages_manage_metadata</code>. Sin token propio usa la página del token de Instagram (modo EAA).</p>`;
+  }
   if (p === 'tiktok') {
     return `<div class="inline"><a class="btn" href="/admin/tiktok/connect">Conectar cuenta de TikTok</a>
       <form method="post" action="/admin/tiktok/webhook"><button class="sec">Registrar webhook en TikTok</button></form></div>
@@ -107,6 +123,7 @@ function connectBlock(p) {
 function mediaLabel(p, id) {
   if (!id) return '<span class="muted">Todas las publicaciones</span>';
   if (p === 'youtube') return `<a href="https://youtu.be/${esc(id)}" target="_blank">Video ${esc(id)}</a>`;
+  if (p === 'facebook') return `<a href="https://www.facebook.com/${esc(id)}" target="_blank">Post ${esc(id)}</a>`;
   return `<span>Post ${esc(id)}</span>`;
 }
 
@@ -129,7 +146,7 @@ export function renderAdmin({ flash = '', tab = 'reglas' } = {}) {
   let body = '';
 
   if (tab === 'reglas') {
-    body = ['instagram', 'tiktok', 'youtube'].map((p) => {
+    body = ALL.map((p) => {
       const rules = listRules(p);
       return `<section><h2>${PLATFORM_LABEL[p]} <span class="pill">${esc(st[p])}</span></h2>
         <p class="muted">${HELP[p]}</p>
@@ -139,7 +156,7 @@ export function renderAdmin({ flash = '', tab = 'reglas' } = {}) {
       </section>`;
     }).join('');
   } else if (tab === 'conexiones') {
-    body = setupSection() + ['instagram', 'tiktok', 'youtube'].map((p) => `<section><h2>${PLATFORM_LABEL[p]} <span class="pill">${esc(st[p])}</span></h2>${connectBlock(p)}</section>`).join('');
+    body = setupSection() + ALL.map((p) => `<section><h2>${PLATFORM_LABEL[p]} <span class="pill">${esc(st[p])}</span></h2>${connectBlock(p)}</section>`).join('');
   } else {
     const events = getDb().prepare('SELECT * FROM events ORDER BY id DESC LIMIT 200').all();
     body = `<section><h2>Actividad reciente</h2><table>${events.map((e) => `<tr><td class="muted">${esc(e.created_at)}</td><td>${esc(e.platform)}</td><td class="${esc(e.level)}">${esc(e.message)}</td></tr>`).join('') || '<tr><td class="muted">Sin actividad todavía</td></tr>'}</table></section>`;

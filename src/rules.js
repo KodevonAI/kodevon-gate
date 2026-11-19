@@ -1,7 +1,8 @@
 // Lógica compartida para crear/editar reglas (panel y API).
 import * as ig from './instagram.js';
+import * as fb from './facebook.js';
 
-export const PLATFORMS = ['instagram', 'tiktok', 'youtube'];
+export const PLATFORMS = ['instagram', 'tiktok', 'youtube', 'facebook'];
 
 export const FIELDS = ['name', 'keywords', 'media_id', 'public_reply', 'ask_follow_msg', 'not_following_msg', 'content_msg', 'active'];
 
@@ -18,6 +19,9 @@ export const DEFAULTS = {
     not_following_msg: 'Aún no veo que me sigas 👀 Sígueme y escribe LISTO de nuevo.',
   },
   youtube: {},
+  facebook: {
+    public_reply: '¡Listo {nombre}! Te lo envié por Messenger 📩',
+  },
 };
 
 /** Campos obligatorios por plataforma (después de aplicar defaults). */
@@ -25,6 +29,7 @@ export const REQUIRED = {
   instagram: ['keywords', 'ask_follow_msg', 'content_msg'],
   tiktok: ['keywords', 'public_reply', 'ask_follow_msg', 'content_msg'],
   youtube: ['keywords', 'public_reply'],
+  facebook: ['keywords', 'content_msg'],
 };
 
 export class RuleError extends Error {
@@ -37,11 +42,12 @@ function toBool(v, fallback) {
   return ['1', 'true', 'on', 'yes', 'si', 'sí'].includes(String(v).toLowerCase());
 }
 
-/** Convierte link del post/reel (IG) o del video (YouTube) en el ID que usa la regla. */
+/** Convierte link del post/reel (IG, Facebook) o del video (YouTube, TikTok) en el ID que usa la regla. */
 export async function resolveMedia(platform, value) {
   const v = String(value || '').trim();
   if (!v) return '';
   if (platform === 'instagram') return ig.resolveMediaId(v);
+  if (platform === 'facebook') return fb.resolveMediaId(v);
   if (platform === 'youtube') {
     const m = v.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([\w-]{11})/);
     return m ? m[1] : v;
