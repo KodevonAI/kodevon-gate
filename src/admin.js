@@ -45,7 +45,7 @@ function ruleForm(platform, r = {}) {
     <div class="actions">
       <label class="check"><input type="checkbox" name="active" ${r.id ? (r.active ? 'checked' : '') : 'checked'}> Activa</label>
       <button>${r.id ? 'Guardar' : 'Crear regla'}</button>
-      ${r.id ? `<button formaction="/admin/rules/${r.id}/delete" class="danger">Eliminar</button>` : ''}
+      ${r.id ? `<button formaction="/admin/rules/${r.id}/delete" class="danger" onclick="return confirm('¿Eliminar esta regla? No se puede deshacer.')">Eliminar</button>` : ''}
     </div>
   </form>`;
 }
@@ -122,39 +122,49 @@ function connectBlock(p) {
 
 function mediaLabel(p, id) {
   if (!id) return '<span class="muted">Todas las publicaciones</span>';
-  if (p === 'youtube') return `<a href="https://youtu.be/${esc(id)}" target="_blank">Video ${esc(id)}</a>`;
-  if (p === 'facebook') return `<a href="https://www.facebook.com/${esc(id)}" target="_blank">Post ${esc(id)}</a>`;
+  if (p === 'youtube') return `<a href="https://youtu.be/${esc(id)}" target="_blank" onclick="event.stopPropagation()">Video ${esc(id)}</a>`;
+  if (p === 'facebook') return `<a href="https://www.facebook.com/${esc(id)}" target="_blank" onclick="event.stopPropagation()">Post ${esc(id)}</a>`;
   return `<span>Post ${esc(id)}</span>`;
+}
+
+function modal(id, title, content) {
+  return `<dialog id="${id}" class="modal" onclick="if(event.target===this)this.close()">
+    <div class="modal-box"><div class="modal-head"><h3>${title}</h3>
+      <button type="button" class="x" onclick="this.closest('dialog').close()" aria-label="Cerrar">✕</button></div>
+    ${content}</div></dialog>`;
 }
 
 function ruleCard(p, r) {
   const kws = r.keywords.split(',').map((k) => k.trim()).filter(Boolean).map((k) => `<span class="chip">${esc(k)}</span>`).join(' ');
-  return `<div class="card">
-    <div class="card-head">
-      <div><b>${esc(r.name || `Regla #${r.id}`)}</b> <span class="badge ${r.active ? 'on' : 'off'}">${r.active ? 'Activa' : 'Pausada'}</span>
-        <div class="meta">${kws} · ${mediaLabel(p, r.media_id)}</div></div>
-    </div>
-    <details><summary>Editar</summary>${ruleForm(p, r)}</details>
-  </div>`;
+  const id = `rule-${r.id}`;
+  return `<div class="card" role="button" tabindex="0" onclick="document.getElementById('${id}').showModal()"
+      onkeydown="if(event.key==='Enter')document.getElementById('${id}').showModal()">
+    <div class="card-top"><b>${esc(r.name || `Regla #${r.id}`)}</b><span class="badge ${r.active ? 'on' : 'off'}">${r.active ? 'Activa' : 'Pausada'}</span></div>
+    <div class="meta">${kws}</div>
+    <div class="meta">${mediaLabel(p, r.media_id)} · #${r.id}</div>
+  </div>
+  ${modal(id, `${esc(PLATFORM_LABEL[p])} · ${esc(r.name || `Regla #${r.id}`)}`, ruleForm(p, r))}`;
 }
 
-const TABS = [['reglas', 'Reglas'], ['conexiones', 'Conexiones'], ['actividad', 'Actividad']];
+const TABS = [...ALL.map((p) => [p, PLATFORM_LABEL[p]]), ['conexiones', 'Conexiones'], ['actividad', 'Actividad']];
 
-export function renderAdmin({ flash = '', tab = 'reglas' } = {}) {
-  if (!TABS.some(([k]) => k === tab)) tab = 'reglas';
+export function renderAdmin({ flash = '', tab = 'instagram' } = {}) {
+  if (tab === 'reglas') tab = 'instagram';
+  if (!TABS.some(([k]) => k === tab)) tab = 'instagram';
   const st = status();
   let body = '';
 
-  if (tab === 'reglas') {
-    body = ALL.map((p) => {
-      const rules = listRules(p);
-      return `<section><h2>${PLATFORM_LABEL[p]} <span class="pill">${esc(st[p])}</span></h2>
-        <p class="muted">${HELP[p]}</p>
-        <h3>Reglas creadas (${rules.length})</h3>
-        ${rules.length ? rules.map((r) => ruleCard(p, r)).join('') : '<p class="muted">Todavía no hay reglas.</p>'}
-        <div class="new"><details${rules.length ? '' : ' open'}><summary>＋ Crear nueva regla de ${PLATFORM_LABEL[p]}</summary>${ruleForm(p)}</details></div>
-      </section>`;
-    }).join('');
+  if (ALL.includes(tab)) {
+    const p = tab;
+    const rules = listRules(p);
+    body = `<section>
+      <div class="sec-head"><div><h2>${PLATFORM_LABEL[p]} <span class="pill">${esc(st[p])}</span></h2>
+        <p class="muted">${HELP[p]}</p></div>
+        <button type="button" onclick="document.getElementById('new-${p}').showModal()">＋ Crear regla de ${PLATFORM_LABEL[p]}</button></div>
+      <h3>Reglas (${rules.length})</h3>
+      ${rules.length ? `<div class="grid">${rules.map((r) => ruleCard(p, r)).join('')}</div>` : '<p class="muted">Todavía no hay reglas en esta plataforma.</p>'}
+      ${modal(`new-${p}`, `Nueva regla de ${PLATFORM_LABEL[p]}`, ruleForm(p))}
+    </section>`;
   } else if (tab === 'conexiones') {
     body = setupSection() + ALL.map((p) => `<section><h2>${PLATFORM_LABEL[p]} <span class="pill">${esc(st[p])}</span></h2>${connectBlock(p)}</section>`).join('');
   } else {
@@ -162,7 +172,8 @@ export function renderAdmin({ flash = '', tab = 'reglas' } = {}) {
     body = `<section><h2>Actividad reciente</h2><table>${events.map((e) => `<tr><td class="muted">${esc(e.created_at)}</td><td>${esc(e.platform)}</td><td class="${esc(e.level)}">${esc(e.message)}</td></tr>`).join('') || '<tr><td class="muted">Sin actividad todavía</td></tr>'}</table></section>`;
   }
 
-  const nav = TABS.map(([k, l]) => `<a href="/admin?tab=${k}" class="${k === tab ? 'act' : ''}">${l}</a>`).join('');
+  const count = (k) => (ALL.includes(k) ? ` <span class="n">${listRules(k).length}</span>` : '');
+  const nav = TABS.map(([k, l]) => `<a href="/admin?tab=${k}" class="${k === tab ? 'act' : ''}">${l}${count(k)}</a>`).join('');
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Kodevon Gate</title>
@@ -175,7 +186,16 @@ nav a.act{color:var(--t);border-color:var(--o)}
 section{background:var(--card);border-radius:10px;padding:20px;margin:20px 0}h2{margin:0 0 6px;font-size:20px}h3{font-size:14px;color:var(--g);margin:18px 0 8px;text-transform:uppercase;letter-spacing:.04em}
 .pill{font-size:12px;background:#333;border-radius:20px;padding:3px 10px;margin-left:8px;vertical-align:middle;color:var(--g)}
 .muted{color:var(--g);font-size:13px}code{background:#111;padding:2px 6px;border-radius:4px;color:var(--t)}a{color:var(--o)}
-.card{background:#1d1d1d;border:1px solid #333;border-radius:8px;padding:12px 14px;margin:8px 0}.card-head{display:flex;justify-content:space-between;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.card{background:#1d1d1d;border:1px solid #333;border-radius:10px;padding:14px;cursor:pointer;transition:border-color .15s,transform .15s}
+.card:hover,.card:focus-visible{border-color:var(--o);transform:translateY(-1px);outline:none}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.sec-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.sec-head button{white-space:nowrap}
+nav{flex-wrap:wrap}nav .n{font-size:11px;background:#333;border-radius:20px;padding:1px 7px;margin-left:4px;color:var(--g)}
+dialog.modal{background:var(--card);color:var(--t);border:1px solid #3a3a3a;border-radius:12px;padding:0;width:min(760px,94vw);max-height:90vh}
+dialog.modal::backdrop{background:rgba(0,0,0,.65)}.modal-box{padding:20px;overflow:auto;max-height:90vh}
+.modal-head{display:flex;justify-content:space-between;align-items:center}.modal-head h3{margin:0;color:var(--t);text-transform:none;letter-spacing:0;font-size:18px}
+.x{background:transparent;color:var(--g);font-size:18px;padding:4px 8px}.x:hover{color:var(--t)}
 .meta{font-size:13px;color:var(--g);margin-top:4px}.chip{background:#333;border-radius:4px;padding:1px 8px;color:var(--t);font-size:12px}
 .badge{font-size:11px;border-radius:20px;padding:2px 8px;margin-left:6px}.badge.on{background:#21402a;color:#9be59b}.badge.off{background:#402121;color:#ff8a80}
 .new{margin-top:16px;border-top:1px dashed #444;padding-top:4px}
@@ -187,7 +207,7 @@ button,.btn{background:var(--o);color:#fff;border:0;border-radius:6px;padding:8p
 .inline{display:flex;gap:8px;margin:8px 0;align-items:center}.inline input{margin:0}.flash{background:#2d3a22;padding:10px 14px;border-radius:6px;margin-top:16px}
 summary{cursor:pointer;color:var(--o);margin-top:8px;font-weight:600}table{width:100%;font-size:12px;border-collapse:collapse}td{padding:4px;border-bottom:1px solid #333;vertical-align:top}
 .okc{color:#9be59b;font-weight:400}.no{color:#ff8a80;font-weight:400}.cp{cursor:pointer}.cp.copied{outline:1px solid var(--o)}
-.error{color:#ff8a80}.warn{color:#ffd180}@media(max-width:700px){.row{grid-template-columns:1fr}}
+.error{color:#ff8a80}.warn{color:#ffd180}@media(max-width:700px){.row{grid-template-columns:1fr}.sec-head{flex-direction:column}}
 </style></head><body><main>
 <h1><b>Kodevon</b> Gate</h1><p class="muted">Palabras clave → verificación de seguidor → contenido. Variable disponible en los textos: <code>{username}</code></p>
 <nav>${nav}</nav>

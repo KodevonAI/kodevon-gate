@@ -109,7 +109,7 @@ export function createApp() {
   // ---------- Panel ----------
   const admin = express.Router();
   admin.use(basicAuth);
-  admin.get('/', (req, res) => res.send(renderAdmin({ flash: req.query.ok ? String(req.query.ok) : '', tab: String(req.query.tab || 'reglas') })));
+  admin.get('/', (req, res) => res.send(renderAdmin({ flash: req.query.ok ? String(req.query.ok) : '', tab: String(req.query.tab || 'instagram') })));
   admin.post('/rules', async (req, res) => {
     const b = { ...req.body, active: req.body.active === 'on' };
     try {
@@ -118,9 +118,9 @@ export function createApp() {
       saveRule(existing ? { ...rule, id: existing.id } : rule);
     } catch (e) {
       const msg = e instanceof RuleError ? e.message : `No se guardó: ${e.message}`;
-      return res.redirect(`/admin?tab=reglas&ok=${encodeURIComponent(msg)}`);
+      return res.redirect(`/admin?tab=${encodeURIComponent(b.platform || 'instagram')}&ok=${encodeURIComponent(msg)}`);
     }
-    res.redirect('/admin?tab=reglas&ok=Regla+guardada');
+    res.redirect(`/admin?tab=${encodeURIComponent(b.platform || 'instagram')}&ok=Regla+guardada`);
   });
   admin.post('/api-key/rotate', (_req, res) => {
     if (config.apiKey) return res.redirect('/admin?tab=conexiones&ok=La+clave+viene+de+API_KEY+en+Coolify;+c%C3%A1mbiala+all%C3%AD');
@@ -136,7 +136,11 @@ export function createApp() {
     applyPanelCredentials(getSetting);
     res.redirect(`/admin?tab=conexiones&ok=${encodeURIComponent(`${n} credencial(es) guardada(s)`)}`);
   });
-  admin.post('/rules/:id/delete', (req, res) => { deleteRule(Number(req.params.id)); res.redirect('/admin?tab=reglas&ok=Regla+eliminada'); });
+  admin.post('/rules/:id/delete', (req, res) => {
+    const r = getRule(Number(req.params.id));
+    deleteRule(Number(req.params.id));
+    res.redirect(`/admin?tab=${encodeURIComponent(r?.platform || 'instagram')}&ok=Regla+eliminada`);
+  });
   admin.post('/instagram/token', async (req, res) => {
     const t = String(req.body.token || '').trim();
     if (!t) return res.redirect('/admin?tab=conexiones');
