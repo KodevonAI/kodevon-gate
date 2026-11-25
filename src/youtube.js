@@ -39,7 +39,19 @@ async function accessToken() {
   if (Date.now() < Number(getSetting('yt_expires_at', '0')) - 60000) return getSetting('yt_access_token');
   const refresh = getSetting('yt_refresh_token');
   if (!refresh) throw new Error('YouTube no conectado');
-  const t = await tokenRequest({ refresh_token: refresh, grant_type: 'refresh_token' });
+  let t;
+  try {
+    t = await tokenRequest({ refresh_token: refresh, grant_type: 'refresh_token' });
+  } catch (e) {
+    if (e.body?.error === 'invalid_grant') {
+      // Token revocado/expirado: Google no lo va a aceptar nunca más. Desconectar para dejar de reintentar.
+      setSetting('yt_refresh_token', '');
+      setSetting('yt_access_token', '');
+      setSetting('yt_expires_at', '0');
+      throw new Error('Token de YouTube expirado o revocado. Vuelve a conectar el canal desde el panel.');
+    }
+    throw e;
+  }
   setSetting('yt_access_token', t.access_token);
   setSetting('yt_expires_at', String(Date.now() + t.expires_in * 1000));
   return t.access_token;

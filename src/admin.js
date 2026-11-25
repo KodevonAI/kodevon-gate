@@ -19,7 +19,7 @@ function status() {
   return {
     instagram: getSetting('ig_user_id') ? `Conectado: @${getSetting('ig_username')}` : 'Sin conectar',
     tiktok: getSetting('tt_business_id') ? `Conectado: @${getSetting('tt_username') || config.tiktok.username}` : 'Sin conectar',
-    youtube: getSetting('yt_channel_id') ? `Conectado: ${getSetting('yt_channel_title')}` : 'Sin conectar',
+    youtube: getSetting('yt_channel_id') && getSetting('yt_refresh_token') ? `Conectado: ${getSetting('yt_channel_title')}` : 'Sin conectar',
     facebook: fb.isConnected() ? `Conectado: ${getSetting('fb_page_name') || (getSetting('fb_page_id') ? fb.pageId() : 'página de Instagram')}` : 'Sin conectar',
   };
 }
