@@ -192,7 +192,7 @@ async function listVideos() {
 
 async function listComments(videoId) {
   const d = await call('/business/comment/list/', {
-    query: { business_id: businessId(), video_id: videoId, include_replies: 'false', sort_field: 'create_time', sort_order: 'desc', max_count: '50' },
+    query: { business_id: businessId(), video_id: videoId, include_replies: 'false', sort_field: 'create_time', sort_order: 'desc', max_count: '30' }, // TikTok: máximo 30
   });
   return d.comments || d.list || [];
 }
@@ -231,14 +231,18 @@ export async function processComments(videoId, comments, { initialize = false, r
 export async function pollComments() {
   if (!businessId() || !getSetting('tt_refresh_token')) return;
   if (!listRules(P).some((r) => r.active && r.public_reply)) return;
-  const initialize = getSetting('tt_comments_initialized') !== '1';
   const ids = new Set(await listVideos());
   for (const r of listRules(P)) if (r.active && r.media_id) ids.add(r.media_id);
   for (const videoId of ids) {
-    try { await processComments(videoId, await listComments(videoId), { initialize }); }
-    catch (e) { logEvent(P, 'error', `Comentarios del video ${videoId}: ${e.message}`); }
+    try {
+      const comments = await listComments(videoId);
+      // Primera lectura exitosa de cada video: marcar lo existente como visto sin responder.
+      // Por video y solo tras leer bien, para que un error no deje comentarios viejos pendientes.
+      const initialize = markSeen(P, `video_init:${videoId}`);
+      await processComments(videoId, comments, { initialize });
+      if (initialize) logEvent(P, 'info', `Video ${videoId}: comentarios existentes marcados como vistos (no se responden)`);
+    } catch (e) { logEvent(P, 'error', `Comentarios del video ${videoId}: ${e.message}`); }
   }
-  if (initialize) { setSetting('tt_comments_initialized', '1'); logEvent(P, 'info', 'Comentarios existentes marcados como vistos (no se responden)'); }
 }
 
 export async function handleWebhook(event) {
