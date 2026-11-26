@@ -38,7 +38,7 @@ export function verifySignature(rawBody, header, now = Date.now()) {
 
 export function authorizeUrl(state) {
   const q = new URLSearchParams({
-    client_key: config.tiktok.appId, response_type: 'code', scope: SCOPES().join(','),
+    client_key: config.tiktok.clientKey, response_type: 'code', scope: SCOPES().join(','),
     redirect_uri: redirectUri(), state,
   });
   return `https://www.tiktok.com/v2/auth/authorize?${q}`;

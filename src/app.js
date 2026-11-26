@@ -165,6 +165,7 @@ export function createApp() {
   });
   admin.get('/tiktok/connect', (_req, res) => {
     if (!config.tiktok.appId) return res.redirect('/admin?tab=conexiones&ok=Falta+TIKTOK_APP_ID');
+    if (!config.tiktok.clientKey) return res.redirect('/admin?tab=conexiones&ok=Falta+TIKTOK_CLIENT_KEY');
     res.redirect(tt.authorizeUrl(newState('tt_state')));
   });
   admin.post('/tiktok/webhook', async (_req, res) => {

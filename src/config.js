@@ -20,6 +20,8 @@ export const config = {
   tiktok: {
     appId: env.TIKTOK_APP_ID || '',
     appSecret: env.TIKTOK_APP_SECRET || '',
+    // client_key de la "TikTok account holder authorization URL" (distinto del App ID)
+    clientKey: env.TIKTOK_CLIENT_KEY || '',
     apiVersion: env.TIKTOK_API_VERSION || 'v1.3',
     username: (env.TIKTOK_USERNAME || '').replace(/^@/, '').toLowerCase(),
     // apify | none
@@ -49,6 +51,7 @@ export const PANEL_CREDENTIALS = {
   cred_ig_app_secret: ['instagram', 'appSecret'],
   cred_tt_app_id: ['tiktok', 'appId'],
   cred_tt_app_secret: ['tiktok', 'appSecret'],
+  cred_tt_client_key: ['tiktok', 'clientKey'],
   cred_tt_username: ['tiktok', 'username'],
   cred_apify_token: ['tiktok', 'apifyToken'],
   cred_yt_client_id: ['youtube', 'clientId'],

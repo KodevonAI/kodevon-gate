@@ -61,7 +61,7 @@ function setupSection() {
   <form method="post" action="/admin/credentials">
     <div class="row">
       ${cred('cred_ig_app_secret', 'Instagram · App Secret', config.instagram.appSecret, true, 'Meta → tu app → Configuración de la app → Información básica → Clave secreta de la aplicación')}
-      ${cred('cred_tt_app_id', 'TikTok · App ID (client key)', config.tiktok.appId, false)}
+      ${cred('cred_tt_app_id', 'TikTok · App ID', config.tiktok.appId, false, 'TikTok API for Business → My Apps → tu app')}
       ${cred('cred_tt_app_secret', 'TikTok · App Secret', config.tiktok.appSecret)}
     </div>
     <div class="row">
@@ -69,7 +69,10 @@ function setupSection() {
       ${cred('cred_apify_token', 'Apify · API token', config.tiktok.apifyToken, true, 'console.apify.com → Settings → API & Integrations')}
       ${cred('cred_yt_client_id', 'YouTube · OAuth Client ID', config.youtube.clientId, false)}
     </div>
-    <div class="row">${cred('cred_yt_client_secret', 'YouTube · OAuth Client Secret', config.youtube.clientSecret)}</div>
+    <div class="row">
+      ${cred('cred_tt_client_key', 'TikTok · Client key', config.tiktok.clientKey, false, 'Detalle de la app → TikTok account holder authorization URL → valor de client_key (no es el App ID)')}
+      ${cred('cred_yt_client_secret', 'YouTube · OAuth Client Secret', config.youtube.clientSecret)}
+    </div>
     <button>Guardar credenciales</button>
   </form>
   <details open><summary>Valores para pegar en Meta / TikTok / Google</summary>
