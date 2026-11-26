@@ -30,8 +30,10 @@ export const config = {
     apifyActor: env.APIFY_ACTOR || 'unseenuser~tiktok-followers-following-scraper',
     followCheckMax: Number(env.TIKTOK_FOLLOW_CHECK_MAX || 50),
     // palabras que cuentan como "ya te seguí"
-    // permisos OAuth (comentarios + mensajes); separados por coma
-    scopes: (env.TIKTOK_SCOPES || 'user.info.basic,user.info.username,video.list,comment.list,comment.list.manage,message.list.read,message.list.send,message.list.manage')
+    // permisos OAuth separados por coma. Solo los aprobados en la app: pedir uno no aprobado
+    // hace que TikTok rechace todo con invalid_scope. Al aprobar Business Messaging, agregar
+    // message.list.read,message.list.send,message.list.manage vía TIKTOK_SCOPES.
+    scopes: (env.TIKTOK_SCOPES || 'user.info.basic,user.info.username,video.list,comment.list,comment.list.manage')
       .split(',').map((s) => s.trim()).filter(Boolean),
     pollSeconds: Number(env.TIKTOK_POLL_SECONDS || 120),
     videosToScan: Number(env.TIKTOK_VIDEOS_TO_SCAN || 10),

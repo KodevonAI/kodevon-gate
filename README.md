@@ -21,7 +21,8 @@ Panel en `/admin` (usuario/contraseña de `ADMIN_USER`/`ADMIN_PASSWORD`) para cr
 | `IG_VERIFY_TOKEN` | IG | Texto cualquiera; el mismo que pones en Meta al configurar el webhook |
 | `IG_ACCESS_TOKEN` | IG | Token de la cuenta (también se puede pegar en el panel). Se renueva solo. |
 | `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET` | TikTok | App de TikTok API for Business (My Apps → detalle de la app) |
-| `TIKTOK_CLIENT_KEY` | TikTok | `client_key` de la *TikTok account holder authorization URL* de la app. No es el App ID. Solo aparece con scopes de TikTok accounts aprobados |
+| `TIKTOK_CLIENT_KEY` | TikTok | `client_key` de la *TikTok account holder authorization URL* de la app (en Kodevon Gate Organic coincide con el App ID). Solo aparece con scopes de TikTok accounts aprobados |
+| `TIKTOK_SCOPES` | no | Permisos a pedir al conectar (defecto: perfil, videos y comentarios). Agregar `message.list.read,message.list.send,message.list.manage` cuando aprueben Business Messaging |
 | `TIKTOK_USERNAME` | TikTok | Tu usuario de TikTok sin @ (para la verificación) |
 | `APIFY_TOKEN` | TikTok | Token de Apify para revisar la lista de "siguiendo" |
 | `TIKTOK_FOLLOW_CHECK` | no | `apify` (defecto) o `none` |
